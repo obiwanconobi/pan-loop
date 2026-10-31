@@ -1,6 +1,8 @@
 #include "MidiPanel.h"
 #include "app/DarkLookAndFeel.h"
 
+#include <array>
+
 namespace
 {
     void styleLabel (juce::Label& label, float height, bool bold = false)
@@ -17,6 +19,8 @@ MidiPanel::MidiPanel (MidiManager& midiManager)
 {
     deviceGroup.setColour (juce::GroupComponent::outlineColourId, DarkLookAndFeel::outline());
     deviceGroup.setColour (juce::GroupComponent::textColourId, DarkLookAndFeel::mutedText());
+    mappingGroup.setColour (juce::GroupComponent::outlineColourId, DarkLookAndFeel::outline());
+    mappingGroup.setColour (juce::GroupComponent::textColourId, DarkLookAndFeel::mutedText());
     logGroup.setColour (juce::GroupComponent::outlineColourId, DarkLookAndFeel::outline());
     logGroup.setColour (juce::GroupComponent::textColourId, DarkLookAndFeel::mutedText());
 
@@ -24,15 +28,21 @@ MidiPanel::MidiPanel (MidiManager& midiManager)
     styleLabel (statusLabel, 13.0f, true);
     styleLabel (lastMessageLabel, 13.0f);
     styleLabel (hintLabel, 12.0f);
+    styleLabel (mappingHintLabel, 12.0f);
 
     deviceLabel.setText ("Device", juce::dontSendNotification);
     statusLabel.setText ("No MIDI input selected", juce::dontSendNotification);
     lastMessageLabel.setText ("No MIDI activity yet.", juce::dontSendNotification);
-    hintLabel.setText ("Select the Blackstar Live Logic above. MIDI Learn is added in Phase 5; "
-                       "this page currently monitors incoming CC, Note and Program Change messages.",
+    hintLabel.setText ("Select the Blackstar Live Logic above, then assign footswitches below.",
                        juce::dontSendNotification);
     hintLabel.setJustificationType (juce::Justification::topLeft);
     hintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+
+    mappingHintLabel.setText ("Click Learn, then press a footswitch. Suggested: "
+                              "FS1 Record, FS2 Stop Recording, FS3 Discard.",
+                              juce::dontSendNotification);
+    mappingHintLabel.setJustificationType (juce::Justification::topLeft);
+    mappingHintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
     logEditor.setMultiLine (true);
     logEditor.setReadOnly (true);
@@ -47,14 +57,18 @@ MidiPanel::MidiPanel (MidiManager& midiManager)
     logEditor.setColour (juce::TextEditor::outlineColourId, DarkLookAndFeel::outline());
 
     addAndMakeVisible (deviceGroup);
+    addAndMakeVisible (mappingGroup);
     addAndMakeVisible (logGroup);
     addAndMakeVisible (deviceLabel);
     addAndMakeVisible (statusLabel);
     addAndMakeVisible (lastMessageLabel);
     addAndMakeVisible (hintLabel);
+    addAndMakeVisible (mappingHintLabel);
     addAndMakeVisible (deviceBox);
     addAndMakeVisible (rescanButton);
     addAndMakeVisible (logEditor);
+
+    buildMappingRows();
 
     deviceBox.onChange = [this]
     {
@@ -68,6 +82,7 @@ MidiPanel::MidiPanel (MidiManager& midiManager)
     };
 
     rebuildDeviceList();
+    updateMappingRows();
     startTimerHz (30);
 }
 
@@ -76,7 +91,9 @@ void MidiPanel::resized()
     auto area = getLocalBounds().reduced (18);
 
     deviceGroup.setBounds (area.removeFromTop (190));
-    area.removeFromTop (14);
+    area.removeFromTop (10);
+    mappingGroup.setBounds (area.removeFromTop (280));
+    area.removeFromTop (10);
     logGroup.setBounds (area);
 
     {
@@ -100,6 +117,26 @@ void MidiPanel::resized()
 
         inner.removeFromTop (8);
         hintLabel.setBounds (inner.removeFromTop (46));
+    }
+
+    {
+        auto inner = mappingGroup.getLocalBounds().reduced (14);
+        inner.translate (mappingGroup.getX(), mappingGroup.getY());
+        inner.removeFromTop (12);
+
+        mappingHintLabel.setBounds (inner.removeFromTop (20));
+        inner.removeFromTop (4);
+
+        for (auto& row : mappingRows)
+        {
+            auto rowArea = inner.removeFromTop (27);
+            row->actionLabel.setBounds (rowArea.removeFromLeft (170));
+            row->mappingLabel.setBounds (rowArea.removeFromLeft (250));
+            rowArea.removeFromLeft (10);
+            row->learnButton.setBounds (rowArea.removeFromLeft (100).reduced (0, 1));
+            rowArea.removeFromLeft (8);
+            row->clearButton.setBounds (rowArea.removeFromLeft (76).reduced (0, 1));
+        }
     }
 
     {
@@ -145,17 +182,27 @@ void MidiPanel::timerCallback()
     repaint (activityBounds);
 
     const auto enabled = midi.getEnabledDeviceIdentifier();
+    const auto learning = midi.getLearningAction();
 
-    if (enabled.isEmpty() && statusLabel.getText() != "No MIDI input selected")
+    if (learning.has_value())
     {
-        statusLabel.setText ("No MIDI input selected", juce::dontSendNotification);
+        statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::armed());
+        statusLabel.setText ("Learning " + juce::String (getMidiActionName (*learning))
+                                 + " - press a footswitch.",
+                             juce::dontSendNotification);
+    }
+    else if (enabled.isEmpty())
+    {
         statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+        statusLabel.setText ("No MIDI input selected", juce::dontSendNotification);
     }
-    else if (! enabled.isEmpty() && ! statusLabel.getText().startsWith ("Connected:"))
+    else
     {
-        statusLabel.setText ("Connected: " + deviceBox.getText(), juce::dontSendNotification);
         statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::playing());
+        statusLabel.setText ("Connected: " + deviceBox.getText(), juce::dontSendNotification);
     }
+
+    updateMappingRows();
 }
 
 void MidiPanel::rebuildDeviceList()
@@ -216,5 +263,97 @@ void MidiPanel::updateSelection()
         midi.setDevice (devices[index].identifier);
         statusLabel.setText ("Connected: " + devices[index].name, juce::dontSendNotification);
         statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::playing());
+    }
+}
+
+void MidiPanel::buildMappingRows()
+{
+    const std::array<MidiAction, numMidiActions> actions
+    {
+        MidiAction::Record,
+        MidiAction::StopRecording,
+        MidiAction::DiscardLayer,
+        MidiAction::PlayPause,
+        MidiAction::ClearLayers,
+        MidiAction::BackingMute,
+        MidiAction::InputMonitor,
+        MidiAction::Metronome
+    };
+
+    for (const auto action : actions)
+    {
+        auto row = std::make_unique<MappingRow>();
+        row->action = action;
+
+        styleLabel (row->actionLabel, 13.0f);
+        styleLabel (row->mappingLabel, 12.0f);
+        row->mappingLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+
+        row->actionLabel.setText (getMidiActionName (action), juce::dontSendNotification);
+        row->mappingLabel.setText ("Not assigned", juce::dontSendNotification);
+
+        row->learnButton.setButtonText ("Learn");
+        row->clearButton.setButtonText ("Clear");
+        row->learnButton.setTooltip ("Listen for the next footswitch press");
+        row->clearButton.setTooltip ("Remove this mapping");
+
+        row->learnButton.onClick = [this, action]
+        {
+            const auto learning = midi.getLearningAction();
+
+            if (learning.has_value() && *learning == action)
+                midi.cancelLearning();
+            else
+                midi.startLearning (action);
+
+            updateMappingRows();
+        };
+
+        row->clearButton.onClick = [this, action]
+        {
+            midi.clearMapping (action);
+            updateMappingRows();
+        };
+
+        addAndMakeVisible (row->actionLabel);
+        addAndMakeVisible (row->mappingLabel);
+        addAndMakeVisible (row->learnButton);
+        addAndMakeVisible (row->clearButton);
+
+        mappingRows.push_back (std::move (row));
+    }
+}
+
+void MidiPanel::updateMappingRows()
+{
+    const auto hasDevice = midi.getEnabledDeviceIdentifier().isNotEmpty();
+    const auto learning = midi.getLearningAction();
+
+    for (auto& row : mappingRows)
+    {
+        const auto mapping = midi.getMapping (row->action);
+
+        if (mapping.has_value())
+        {
+            row->mappingLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::text());
+            row->mappingLabel.setText (describeMidiMapping (*mapping), juce::dontSendNotification);
+        }
+        else
+        {
+            row->mappingLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+            row->mappingLabel.setText ("Not assigned", juce::dontSendNotification);
+        }
+
+        const auto isLearning = learning.has_value() && *learning == row->action;
+
+        row->learnButton.setButtonText (isLearning ? "Listening..." : "Learn");
+        row->learnButton.setColour (juce::TextButton::buttonColourId,
+                                    isLearning ? DarkLookAndFeel::armed().withAlpha (0.25f)
+                                               : juce::Colour (0xff2a2f38));
+        row->learnButton.setColour (juce::TextButton::textColourOffId,
+                                    isLearning ? DarkLookAndFeel::armed()
+                                               : DarkLookAndFeel::text());
+        row->learnButton.setEnabled (hasDevice || isLearning);
+        row->clearButton.setEnabled (mapping.has_value());
     }
 }

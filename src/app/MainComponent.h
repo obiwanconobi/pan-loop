@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "audio/AudioEngine.h"
+#include "midi/MidiAction.h"
 
 class MainComponent final : public juce::Component
 {
@@ -14,6 +15,8 @@ public:
     void resized() override;
 
 private:
+    void handleMidiAction (MidiAction action);
+
     juce::AudioDeviceManager deviceManager;
     AudioEngine audioEngine;
     std::unique_ptr<class MidiManager> midiManager;

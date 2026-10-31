@@ -92,7 +92,7 @@ namespace
 
             juce::String text;
             text << "Application: Pan Loop " << ProjectInfo::versionString << "\n"
-                 << "Phase: 4 - live looper, backing playlist, transport and metronome\n"
+                 << "Phase: 5 - MIDI control, live looper, backing playlist and transport\n"
                  << "Transport: " << transportStateName (infoState.state)
                  << " | bar " << infoState.bar << "." << infoState.beat
                  << " | " << juce::String (infoState.bpm, 1) << " BPM"
@@ -211,7 +211,7 @@ MainComponent::MainComponent()
     subtitleLabel.setFont (juce::Font (juce::FontOptions (13.0f)));
     subtitleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    phaseLabel.setText ("PHASE 4  |  LIVE LOOPER", juce::dontSendNotification);
+    phaseLabel.setText ("PHASE 5  |  MIDI CONTROL", juce::dontSendNotification);
     phaseLabel.setFont (juce::Font (juce::FontOptions (13.0f, juce::Font::bold)));
     phaseLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::accent());
     phaseLabel.setJustificationType (juce::Justification::centredRight);
@@ -227,6 +227,17 @@ MainComponent::MainComponent()
     deviceManager.addAudioCallback (&audioEngine);
 
     midiManager = std::make_unique<MidiManager> (deviceManager);
+    midiManager->onAction = [this] (MidiAction action)
+    {
+        handleMidiAction (action);
+    };
+
+   #if JUCE_DEBUG
+    const auto testMidiDevice = juce::SystemStats::getEnvironmentVariable ("PANLOOP_TEST_MIDI_DEVICE", {});
+
+    if (testMidiDevice.isNotEmpty())
+        midiManager->selectDeviceMatching (testMidiDevice);
+   #endif
 
     tabs.setTabBarDepth (40);
     tabs.setColour (juce::TabbedComponent::backgroundColourId, DarkLookAndFeel::background());
@@ -322,6 +333,59 @@ MainComponent::MainComponent()
         });
     }
 
+    const auto testMidiLearn = juce::SystemStats::getEnvironmentVariable ("PANLOOP_TEST_MIDI_LEARN", {});
+
+    if (testMidiLearn.isNotEmpty())
+    {
+        if (const auto action = midiActionFromKey (testMidiLearn))
+        {
+            juce::Component::SafePointer<MainComponent> safeThis (this);
+
+            juce::Timer::callAfterDelay (1500, [safeThis, action]
+            {
+                if (safeThis != nullptr && safeThis->midiManager != nullptr)
+                    safeThis->midiManager->startLearning (*action);
+            });
+        }
+    }
+
+    const auto testMidiInject = juce::SystemStats::getEnvironmentVariable ("PANLOOP_TEST_MIDI_INJECT", {});
+
+    if (testMidiInject.isNotEmpty())
+    {
+        const auto tokens = juce::StringArray::fromTokens (testMidiInject, "|", "");
+        juce::Component::SafePointer<MainComponent> safeThis (this);
+
+        for (int i = 0; i < tokens.size(); ++i)
+        {
+            const auto fields = juce::StringArray::fromTokens (tokens[i], ":", "");
+
+            if (fields.size() < 3)
+                continue;
+
+            const auto type = fields[0].toLowerCase();
+            const auto number = fields[1].getIntValue();
+            const auto value = fields[2].getIntValue();
+            juce::MidiMessage message;
+
+            if (type == "cc")
+                message = juce::MidiMessage::controllerEvent (1, number, value);
+            else if (type == "note")
+                message = juce::MidiMessage::noteOn (1, number,
+                                                     static_cast<juce::uint8> (juce::jlimit (1, 127, value)));
+            else if (type == "pc")
+                message = juce::MidiMessage::programChange (1, number);
+            else
+                continue;
+
+            juce::Timer::callAfterDelay (2000 + i * 1500, [safeThis, message]
+            {
+                if (safeThis != nullptr && safeThis->midiManager != nullptr)
+                    safeThis->midiManager->injectMidiMessageForTest (message);
+            });
+        }
+    }
+
     if (juce::SystemStats::getEnvironmentVariable ("PANLOOP_TEST_LOOP", {}) == "1")
     {
         juce::Component::SafePointer<MainComponent> safeThis (this);
@@ -387,6 +451,47 @@ MainComponent::~MainComponent()
 {
     deviceManager.removeAudioCallback (&audioEngine);
     midiManager.reset();
+}
+
+void MainComponent::handleMidiAction (MidiAction action)
+{
+    juce::Logger::writeToLog ("Executing MIDI action: " + juce::String (getMidiActionName (action)));
+
+    switch (action)
+    {
+        case MidiAction::Record:
+            audioEngine.record();
+            break;
+
+        case MidiAction::StopRecording:
+            audioEngine.stopRecording();
+            break;
+
+        case MidiAction::DiscardLayer:
+            audioEngine.discardLiveLayer();
+            break;
+
+        case MidiAction::PlayPause:
+            if (! audioEngine.getLiveLooper().isRecordingOrArmed())
+                audioEngine.getTransport().togglePlayPause();
+            break;
+
+        case MidiAction::ClearLayers:
+            audioEngine.clearLiveLayers();
+            break;
+
+        case MidiAction::BackingMute:
+            audioEngine.toggleBackingMute();
+            break;
+
+        case MidiAction::InputMonitor:
+            audioEngine.toggleInputMonitoring();
+            break;
+
+        case MidiAction::Metronome:
+            audioEngine.getMetronome().setEnabled (! audioEngine.getMetronome().isEnabled());
+            break;
+    }
 }
 
 void MainComponent::paint (juce::Graphics& g)

@@ -279,6 +279,9 @@ void AudioSettingsPanel::timerCallback()
     updateStatus();
     updateMeters();
 
+    if (monitorButton.getToggleState() != engine.isMonitoringEnabled())
+        monitorButton.setToggleState (engine.isMonitoringEnabled(), juce::dontSendNotification);
+
     if (engine.hasClipped())
     {
         clipHoldTicks = 60;

@@ -8,7 +8,7 @@ A Linux-first standalone live looping app in **C++20 + JUCE**, with JACK audio I
 - [x] Phase 2 — transport clock, BPM/time signature, metronome, latency readout, Live transport panel
 - [x] Phase 3 — backing playlist, file decoding/resampling, ordered sequence, gapless loop, per-file gain, memory display
 - [x] Phase 4 — live looper, first loop/bar snap, overdub auto-stop, Stop/Discard, latency compensation, layers and mix controls
-- [ ] Phase 5 — MIDI control
+- [x] Phase 5 — MIDI learn, action mappings, persistence, Blackstar quick start
 - [ ] Phase 6 — session persistence and polish
 
 ## 1. Core loop behavior
@@ -115,7 +115,7 @@ JUCE’s JACK backend creates a `pan-loop` client with stereo `in_1/2` and `out_
 2. [x] **Audio engine and transport foundation**: JACK stereo I/O, transport clock, input monitoring, meters, xruns, metronome/test tone, latency readout, Live transport panel. *(complete)*
 3. [x] **Backing playlist**: file decoding/resampling, playlist UI, sequence playback, gapless loop, per-file gain, memory display. *(complete)*
 4. [x] **Live looper**: first-loop capture and bar snap, overdub auto-stop, layer mixer, Stop/Discard state machine, latency compensation, layers and mix controls, trimmed first-loop buffers. *(complete)*
-5. [ ] **MIDI control**: learn UI, mappings, action dispatch, persistence, Blackstar quick-start.
+5. [x] **MIDI control**: learn UI, mappings for CC/Note/Program Change, action dispatch, persistence, Blackstar quick-start. *(complete)*
 6. [ ] **Session and polish**: save/load, layer WAVs, mixdown export, performance view, error handling, AppImage packaging, tests.
 
 ## 7. Acceptance criteria

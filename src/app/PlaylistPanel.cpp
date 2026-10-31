@@ -69,6 +69,13 @@ PlaylistPanel::PlaylistPanel (AudioEngine& audioEngine)
     downButton.onClick = [this] { moveSelected (1); };
     clearButton.onClick = [this] { clearPlaylist(); };
 
+    backingMuteButton.setTooltip ("Mute or restore the backing playlist without stopping transport");
+    backingMuteButton.setToggleState (engine.isBackingMuted(), juce::dontSendNotification);
+    backingMuteButton.onClick = [this]
+    {
+        engine.setBackingMuted (backingMuteButton.getToggleState());
+    };
+
     listBox.setRowHeight (34);
     listBox.setColour (juce::ListBox::backgroundColourId, DarkLookAndFeel::panelAlt());
     listBox.setColour (juce::ListBox::outlineColourId, DarkLookAndFeel::outline());
@@ -99,6 +106,7 @@ PlaylistPanel::PlaylistPanel (AudioEngine& audioEngine)
     addAndMakeVisible (upButton);
     addAndMakeVisible (downButton);
     addAndMakeVisible (clearButton);
+    addAndMakeVisible (backingMuteButton);
     addAndMakeVisible (listBox);
     addAndMakeVisible (emptyLabel);
     addAndMakeVisible (gainSlider);
@@ -213,6 +221,8 @@ void PlaylistPanel::resized()
     downButton.setBounds (buttons.removeFromLeft (105));
     buttons.removeFromLeft (8);
     clearButton.setBounds (buttons.removeFromLeft (80));
+    buttons.removeFromLeft (20);
+    backingMuteButton.setBounds (buttons.removeFromLeft (150));
 
     area.removeFromTop (8);
     statusLabel.setBounds (area.removeFromTop (22));
@@ -586,6 +596,9 @@ void PlaylistPanel::updateButtons()
     upButton.setEnabled (canEdit && selectedIndex > 0);
     downButton.setEnabled (canEdit && selectedIndex >= 0 && selectedIndex < count - 1);
     clearButton.setEnabled (canEdit && count > 0);
+
+    if (backingMuteButton.getToggleState() != engine.isBackingMuted())
+        backingMuteButton.setToggleState (engine.isBackingMuted(), juce::dontSendNotification);
 }
 
 void PlaylistPanel::updateSelectionControls()

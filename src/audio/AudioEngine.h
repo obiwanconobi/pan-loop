@@ -38,6 +38,11 @@ public:
     void setInputGainDb (float db) noexcept;
     void setOutputGainDb (float db) noexcept;
     void setMonitoringEnabled (bool shouldMonitor) noexcept;
+    bool isMonitoringEnabled() const noexcept;
+    void toggleInputMonitoring() noexcept;
+    void setBackingMuted (bool muted) noexcept;
+    bool isBackingMuted() const noexcept;
+    void toggleBackingMute() noexcept;
     void setTestToneEnabled (bool shouldPlayTone) noexcept;
     void setTestToneFrequency (double hz) noexcept;
 
@@ -103,6 +108,7 @@ private:
     std::atomic<float> inputGainLinear { 1.0f };
     std::atomic<float> outputGainLinear { 1.0f };
     std::atomic<bool> monitoringEnabled { true };
+    std::atomic<bool> backingMuted { false };
     std::atomic<bool> testToneEnabled { false };
     std::atomic<double> testToneFrequency { 440.0 };
     std::atomic<float> inputLevel { 0.0f };

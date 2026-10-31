@@ -72,6 +72,7 @@ private:
     juce::TextButton upButton { "Move up" };
     juce::TextButton downButton { "Move down" };
     juce::TextButton clearButton { "Clear" };
+    juce::ToggleButton backingMuteButton { "Mute backing" };
 
     juce::ListBox listBox { "backing files", this };
     juce::Slider gainSlider;

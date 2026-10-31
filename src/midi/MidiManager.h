@@ -2,9 +2,16 @@
 
 #include <JuceHeader.h>
 
-/** Owns the selected MIDI input and collects incoming messages for the UI.
-    Phase 1 only monitors activity; MIDI learn and action dispatch come later. */
-class MidiManager final : private juce::MidiInputCallback
+#include "MidiMapping.h"
+
+#include <array>
+#include <atomic>
+#include <optional>
+#include <vector>
+
+/** Owns the selected MIDI input, MIDI Learn mappings and action dispatch. */
+class MidiManager final : private juce::MidiInputCallback,
+                          private juce::AsyncUpdater
 {
 public:
     explicit MidiManager (juce::AudioDeviceManager& deviceManager);
@@ -17,6 +24,19 @@ public:
     juce::String getEnabledDeviceIdentifier() const;
 
     void setDevice (const juce::String& identifier);
+    bool selectDeviceMatching (const juce::String& nameContains);
+
+    void startLearning (MidiAction action);
+    void cancelLearning();
+    std::optional<MidiAction> getLearningAction() const;
+    std::optional<MidiMapping> getMapping (MidiAction action) const;
+    void clearMapping (MidiAction action);
+
+    /** Called on the message thread when a mapped control is pressed. */
+    std::function<void(MidiAction)> onAction;
+
+    /** Development/test helper: feed a message through the normal learn/dispatch path. */
+    void injectMidiMessageForTest (const juce::MidiMessage& message);
 
     struct Snapshot
     {
@@ -34,12 +54,29 @@ public:
 private:
     void handleIncomingMidiMessage (juce::MidiInput* source,
                                     const juce::MidiMessage& message) override;
+    void handleAsyncUpdate() override;
+
+    static bool messageToMapping (const juce::MidiMessage& message, MidiMapping& mapping);
+    std::optional<MidiAction> findActionForMessage (const juce::MidiMessage& message) const;
+    void dispatchAction (MidiAction action);
+    void setMapping (const MidiMapping& mapping);
+
+    static juce::File getMappingFile();
+    void loadMappings();
+    void saveMappings() const;
 
     juce::AudioDeviceManager& deviceManager;
 
     mutable juce::CriticalSection lock;
     juce::String enabledIdentifier;
     juce::Array<juce::MidiDeviceInfo> availableDevices;
+
+    mutable juce::CriticalSection mappingLock;
+    std::vector<MidiMapping> mappings;
+    std::atomic<int> learningAction { -1 };
+    std::atomic<int> pendingAction { -1 };
+    std::atomic<bool> mappingDirty { false };
+    std::array<double, numMidiActions> lastActionTimes {};
 
     juce::String lastMessage;
     juce::String lastDevice;

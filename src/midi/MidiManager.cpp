@@ -1,10 +1,13 @@
 #include "MidiManager.h"
 
+#include "core/AppConfig.h"
+
 #include <algorithm>
 
 namespace
 {
     constexpr int maxLogLines = 40;
+    constexpr double actionDebounceMs = 80.0;
 }
 
 MidiManager::MidiManager (juce::AudioDeviceManager& manager)
@@ -13,6 +16,7 @@ MidiManager::MidiManager (juce::AudioDeviceManager& manager)
     deviceManager.addMidiInputDeviceCallback ({}, this);
     refreshDeviceList();
     autoSelectLiveLogic();
+    loadMappings();
 }
 
 MidiManager::~MidiManager()
@@ -21,12 +25,36 @@ MidiManager::~MidiManager()
 
     if (enabledIdentifier.isNotEmpty())
         deviceManager.setMidiInputDeviceEnabled (enabledIdentifier, false);
+
+    if (mappingDirty.load (std::memory_order_relaxed))
+        saveMappings();
 }
 
 void MidiManager::refreshDeviceList()
 {
-    const auto devices = juce::MidiInput::getAvailableDevices();
+    auto devices = juce::MidiInput::getAvailableDevices();
+
+    // Some ALSA setups expose the same port through multiple endpoint views.
+    juce::Array<juce::MidiDeviceInfo> uniqueDevices;
+
+    for (const auto& device : devices)
+    {
+        const auto alreadyPresent = std::any_of (uniqueDevices.begin(), uniqueDevices.end(),
+                                                 [&device] (const juce::MidiDeviceInfo& existing)
+                                                 {
+                                                     return existing.identifier == device.identifier;
+                                                 });
+
+        if (! alreadyPresent)
+            uniqueDevices.add (device);
+    }
+
+    devices = std::move (uniqueDevices);
     juce::String previousIdentifier;
+
+    for (const auto& device : devices)
+        juce::Logger::writeToLog ("MIDI input device: " + device.name
+                                  + " [" + device.identifier + "]");
 
     {
         const juce::ScopedLock sl (lock);
@@ -83,6 +111,21 @@ juce::String MidiManager::getEnabledDeviceIdentifier() const
 {
     const juce::ScopedLock sl (lock);
     return enabledIdentifier;
+}
+
+bool MidiManager::selectDeviceMatching (const juce::String& nameContains)
+{
+    for (const auto& device : getAvailableDevices())
+    {
+        if (device.name.containsIgnoreCase (nameContains))
+        {
+            juce::Logger::writeToLog ("Selecting MIDI device by name: " + device.name);
+            setDevice (device.identifier);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void MidiManager::setDevice (const juce::String& identifier)
@@ -193,15 +236,309 @@ void MidiManager::handleIncomingMidiMessage (juce::MidiInput* source,
     const auto nowMs = juce::Time::getMillisecondCounterHiRes();
     const auto timestamp = juce::Time::getCurrentTime().formatted ("%H:%M:%S");
 
-    const juce::ScopedLock sl (lock);
+    {
+        const juce::ScopedLock sl (lock);
 
-    lastMessage = description;
-    lastDevice = deviceName;
-    lastMessageTimeMs = nowMs;
-    ++messageCount;
+        lastMessage = description;
+        lastDevice = deviceName;
+        lastMessageTimeMs = nowMs;
+        ++messageCount;
 
-    logLines.add ("[" + timestamp + "] " + deviceName + ": " + description);
+        logLines.add ("[" + timestamp + "] " + deviceName + ": " + description);
 
-    while (logLines.size() > maxLogLines)
-        logLines.remove (0);
+        while (logLines.size() > maxLogLines)
+            logLines.remove (0);
+    }
+
+    const auto learning = learningAction.load (std::memory_order_relaxed);
+
+    if (learning >= 0)
+    {
+        MidiMapping mapping;
+
+        if (messageToMapping (message, mapping))
+        {
+            mapping.action = static_cast<MidiAction> (learning);
+            setMapping (mapping);
+            learningAction.store (-1, std::memory_order_relaxed);
+            mappingDirty.store (true, std::memory_order_relaxed);
+            triggerAsyncUpdate();
+
+            juce::Logger::writeToLog ("MIDI learned " + juce::String (getMidiActionName (mapping.action))
+                                      + " = " + describeMidiMapping (mapping));
+        }
+
+        return;
+    }
+
+    if (const auto action = findActionForMessage (message))
+        dispatchAction (*action);
+}
+
+void MidiManager::injectMidiMessageForTest (const juce::MidiMessage& message)
+{
+    handleIncomingMidiMessage (nullptr, message);
+}
+
+void MidiManager::startLearning (MidiAction action)
+{
+    learningAction.store (static_cast<int> (action), std::memory_order_relaxed);
+    juce::Logger::writeToLog ("MIDI learn started: " + juce::String (getMidiActionName (action)));
+}
+
+void MidiManager::cancelLearning()
+{
+    learningAction.store (-1, std::memory_order_relaxed);
+    juce::Logger::writeToLog ("MIDI learn cancelled");
+}
+
+std::optional<MidiAction> MidiManager::getLearningAction() const
+{
+    const auto value = learningAction.load (std::memory_order_relaxed);
+
+    if (value >= 0 && value < numMidiActions)
+        return static_cast<MidiAction> (value);
+
+    return {};
+}
+
+std::optional<MidiMapping> MidiManager::getMapping (MidiAction action) const
+{
+    const juce::ScopedLock sl (mappingLock);
+
+    for (const auto& mapping : mappings)
+        if (mapping.action == action)
+            return mapping;
+
+    return {};
+}
+
+void MidiManager::clearMapping (MidiAction action)
+{
+    bool changed = false;
+
+    {
+        const juce::ScopedLock sl (mappingLock);
+        const auto oldSize = mappings.size();
+        mappings.erase (std::remove_if (mappings.begin(), mappings.end(),
+                                        [action] (const MidiMapping& mapping)
+                                        {
+                                            return mapping.action == action;
+                                        }),
+                        mappings.end());
+        changed = mappings.size() != oldSize;
+    }
+
+    if (const auto learning = getLearningAction(); learning.has_value() && *learning == action)
+        learningAction.store (-1, std::memory_order_relaxed);
+
+    if (changed)
+    {
+        mappingDirty.store (false, std::memory_order_relaxed);
+        saveMappings();
+        juce::Logger::writeToLog ("MIDI mapping cleared: " + juce::String (getMidiActionName (action)));
+    }
+}
+
+void MidiManager::handleAsyncUpdate()
+{
+    const auto action = pendingAction.exchange (-1, std::memory_order_relaxed);
+
+    if (action >= 0 && action < numMidiActions && onAction != nullptr)
+        onAction (static_cast<MidiAction> (action));
+
+    if (mappingDirty.exchange (false, std::memory_order_relaxed))
+        saveMappings();
+}
+
+bool MidiManager::messageToMapping (const juce::MidiMessage& message, MidiMapping& mapping)
+{
+    if (message.isController())
+    {
+        if (message.getControllerValue() < 64)
+            return false;
+
+        mapping.type = MidiMappingType::ControlChange;
+        mapping.channel = message.getChannel();
+        mapping.number = message.getControllerNumber();
+        return true;
+    }
+
+    if (message.isNoteOn())
+    {
+        mapping.type = MidiMappingType::NoteOn;
+        mapping.channel = message.getChannel();
+        mapping.number = message.getNoteNumber();
+        return true;
+    }
+
+    if (message.isProgramChange())
+    {
+        mapping.type = MidiMappingType::ProgramChange;
+        mapping.channel = message.getChannel();
+        mapping.number = message.getProgramChangeNumber();
+        return true;
+    }
+
+    return false;
+}
+
+std::optional<MidiAction> MidiManager::findActionForMessage (const juce::MidiMessage& message) const
+{
+    const juce::ScopedLock sl (mappingLock);
+
+    for (const auto& mapping : mappings)
+    {
+        if (mapping.channel != 0 && mapping.channel != message.getChannel())
+            continue;
+
+        switch (mapping.type)
+        {
+            case MidiMappingType::ControlChange:
+                if (message.isController()
+                    && message.getControllerValue() >= 64
+                    && message.getControllerNumber() == mapping.number)
+                    return mapping.action;
+                break;
+
+            case MidiMappingType::NoteOn:
+                if (message.isNoteOn() && message.getNoteNumber() == mapping.number)
+                    return mapping.action;
+                break;
+
+            case MidiMappingType::ProgramChange:
+                if (message.isProgramChange()
+                    && message.getProgramChangeNumber() == mapping.number)
+                    return mapping.action;
+                break;
+        }
+    }
+
+    return {};
+}
+
+void MidiManager::dispatchAction (MidiAction action)
+{
+    const auto index = static_cast<size_t> (static_cast<int> (action));
+
+    if (index >= lastActionTimes.size())
+        return;
+
+    const auto now = juce::Time::getMillisecondCounterHiRes();
+
+    if (now - lastActionTimes[index] < actionDebounceMs)
+        return;
+
+    lastActionTimes[index] = now;
+    pendingAction.store (static_cast<int> (action), std::memory_order_relaxed);
+    triggerAsyncUpdate();
+
+    juce::Logger::writeToLog ("MIDI action: " + juce::String (getMidiActionName (action)));
+}
+
+void MidiManager::setMapping (const MidiMapping& mapping)
+{
+    const juce::ScopedLock sl (mappingLock);
+
+    mappings.erase (std::remove_if (mappings.begin(), mappings.end(),
+                                    [&mapping] (const MidiMapping& existing)
+                                    {
+                                        return existing.action == mapping.action
+                                            || (existing.type == mapping.type
+                                                && existing.channel == mapping.channel
+                                                && existing.number == mapping.number);
+                                    }),
+                    mappings.end());
+
+    mappings.push_back (mapping);
+    mappingDirty.store (true, std::memory_order_relaxed);
+}
+
+juce::File MidiManager::getMappingFile()
+{
+    return AppConfig::getConfigDirectory().getChildFile ("midi-map.txt");
+}
+
+void MidiManager::loadMappings()
+{
+    const auto file = getMappingFile();
+
+    if (! file.existsAsFile())
+        return;
+
+    auto lines = juce::StringArray::fromLines (file.loadFileAsString());
+    std::vector<MidiMapping> loaded;
+    int lineNumber = 0;
+
+    for (auto line : lines)
+    {
+        ++lineNumber;
+        line = line.trim();
+
+        if (line.isEmpty() || line.startsWith ("#"))
+            continue;
+
+        const auto tokens = juce::StringArray::fromTokens (line, " \t", "");
+
+        if (tokens.size() < 4)
+        {
+            juce::Logger::writeToLog ("Ignoring malformed MIDI map line "
+                                      + juce::String (lineNumber));
+            continue;
+        }
+
+        const auto action = midiActionFromKey (tokens[0]);
+        const auto type = midiMappingTypeFromString (tokens[1]);
+        const auto channel = tokens[2].getIntValue();
+        const auto number = tokens[3].getIntValue();
+
+        if (! action.has_value() || ! type.has_value()
+            || channel < 0 || channel > 16
+            || number < 0 || number > 127)
+        {
+            juce::Logger::writeToLog ("Ignoring invalid MIDI map line "
+                                      + juce::String (lineNumber));
+            continue;
+        }
+
+        loaded.push_back ({ *action, *type, channel, number });
+    }
+
+    const auto loadedCount = static_cast<int> (loaded.size());
+
+    {
+        const juce::ScopedLock sl (mappingLock);
+        mappings = std::move (loaded);
+    }
+
+    juce::Logger::writeToLog ("Loaded " + juce::String (loadedCount)
+                              + " MIDI mappings from " + file.getFullPathName());
+}
+
+void MidiManager::saveMappings() const
+{
+    std::vector<MidiMapping> copy;
+
+    {
+        const juce::ScopedLock sl (mappingLock);
+        copy = mappings;
+    }
+
+    juce::String text ("# Pan Loop MIDI map\n");
+    text << "# action type channel number\n";
+
+    for (const auto& mapping : copy)
+    {
+        text << getMidiActionKey (mapping.action) << " "
+             << midiMappingTypeToString (mapping.type) << " "
+             << mapping.channel << " "
+             << mapping.number << "\n";
+    }
+
+    const auto file = getMappingFile();
+
+    if (file.replaceWithText (text))
+        juce::Logger::writeToLog ("Saved MIDI mappings to " + file.getFullPathName());
+    else
+        juce::Logger::writeToLog ("Failed to save MIDI mappings to " + file.getFullPathName());
 }

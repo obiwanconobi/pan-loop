@@ -147,7 +147,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     const auto beatsPerBar = juce::jmax (1, transport.getTimeSignatureNumerator());
     const auto cycleLengthSamples = transport.getCycleLengthSamples();
 
-    if (transportPlaying)
+    if (transportPlaying && ! backingMuted.load (std::memory_order_relaxed))
         playlist.addTo (mixBuffer, 0, numSamples, transportPositionSamples);
 
     const auto liveResult = liveLooper.processBlock (mixBuffer,
@@ -500,6 +500,31 @@ void AudioEngine::setOutputGainDb (float db) noexcept
 void AudioEngine::setMonitoringEnabled (bool shouldMonitor) noexcept
 {
     monitoringEnabled.store (shouldMonitor, std::memory_order_relaxed);
+}
+
+bool AudioEngine::isMonitoringEnabled() const noexcept
+{
+    return monitoringEnabled.load (std::memory_order_relaxed);
+}
+
+void AudioEngine::toggleInputMonitoring() noexcept
+{
+    setMonitoringEnabled (! isMonitoringEnabled());
+}
+
+void AudioEngine::setBackingMuted (bool muted) noexcept
+{
+    backingMuted.store (muted, std::memory_order_relaxed);
+}
+
+bool AudioEngine::isBackingMuted() const noexcept
+{
+    return backingMuted.load (std::memory_order_relaxed);
+}
+
+void AudioEngine::toggleBackingMute() noexcept
+{
+    setBackingMuted (! isBackingMuted());
 }
 
 void AudioEngine::setTestToneEnabled (bool shouldPlayTone) noexcept

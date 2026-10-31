@@ -12,7 +12,7 @@ The full design is in [PLAN.md](PLAN.md).
 
 ## Project status
 
-**Phase 4 complete: live looper**
+**Phase 5 complete: MIDI control**
 
 Implemented so far:
 
@@ -52,8 +52,15 @@ Implemented so far:
 - Barrier against changing playlist structure while live layers exist, since the playlist defines the master cycle
 - Keyboard shortcuts: `Space` play/pause, `S` stop, `R` record, `T` stop recording, `D` discard
 - Live looping verified with JACK loopback: first loop, bar-snapped loop, overdub, auto-stop, discard, clear, latency compensation, and playlist-plus-layer synchronization
+- **MIDI Learn** for CC, Note On and Program Change messages
+- Assignable actions: Record, Stop Recording, Discard Layer, Play/Pause, Clear Layers, Backing Mute, Input Monitor and Metronome
+- Mapping table with per-action Learn/Clear controls and live mapping descriptions
+- Automatic mapping persistence in `~/.config/pan-loop/midi-map.txt`
+- MIDI actions dispatched safely on the message thread; repeated messages are debounced
+- Backing mute toggle in the Playlist tab and input-monitor synchronization in the Audio tab
+- MIDI Learn and action dispatch verified with injected CC, Note and Program Change messages, including mapping persistence across restarts
 
-Session persistence and MIDI learn are the next phases.
+Session persistence and polish are the next phase.
 
 ### Backing playlist notes
 
@@ -143,17 +150,47 @@ JUCE’s JACK backend auto-connects whole devices and does not expose full per-p
 
 ## MIDI / Blackstar Live Logic
 
-- Connect the Live Logic over USB.
-- Open the **MIDI** tab and select the device, or press **Rescan**.
-- If a device whose name contains “Live Logic” is present at startup, it is selected automatically.
-- The MIDI page currently only monitors incoming **CC**, **Note On/Off** and **Program Change** messages. MIDI Learn and transport actions arrive in Phase 5.
-- MIDI clock and active sensing are ignored so they do not flood the monitor.
-- MIDI input uses ALSA (through JUCE), not JACK MIDI, in this phase.
+Quick start:
+
+1. Connect the Live Logic over USB.
+2. Open the **MIDI** tab. If a device whose name contains “Live Logic” is present at startup, it is selected automatically; otherwise select it and press **Rescan**.
+3. In **Footswitch mappings**, click **Learn** next to an action.
+4. Press the footswitch. The incoming message is captured and saved automatically.
+5. Repeat for the other actions. **Clear** removes a mapping.
+
+Suggested footswitch layout:
+
+- FS1: Record
+- FS2: Stop Recording
+- FS3: Discard Layer
+- FS4: Play / Pause
+- FS5: Backing Mute
+- FS6: Clear Layers (or Input Monitor / Metronome)
+
+The Live Logic can be configured to send CC, Note or Program Change messages. MIDI Learn accepts all three; no fixed CC numbers are required. MIDI clock and active sensing are ignored, and repeated messages are debounced.
+
+Mappings are stored at:
+
+`~/.config/pan-loop/midi-map.txt`
+
+The file is human-readable and can be edited manually:
+
+```text
+# action type channel number
+record cc 1 20
+stop cc 1 21
+discard cc 1 22
+playpause note 1 60
+metronome program 1 5
+```
+
+Each mapping stores the MIDI channel and number. For CC messages, values 64-127 trigger the action; Note On messages trigger on velocity greater than zero; Program Change messages trigger on receipt. MIDI input uses ALSA (through JUCE), not JACK MIDI.
 
 ## Configuration and logs
 
 - Config directory: `~/.config/pan-loop/`
 - Log file: `~/.config/pan-loop/pan-loop.log`
+- MIDI map: `~/.config/pan-loop/midi-map.txt`
 - Sessions directory: `~/.config/pan-loop/sessions/` (reserved for future sessions)
 
 The Session tab shows these paths and can copy a diagnostics block to the clipboard.
@@ -166,7 +203,7 @@ src/
   app/                         main window, live transport, playlist and layer UI, look and feel, tabs
   audio/                       audio engine, live looper, transport, metronome, playlist, file loader, device setup
   core/                        config paths and logging
-  midi/                        MIDI device management and monitor UI
+  midi/                        MIDI device management, learn/mapping model and mapping UI
   ui/                          shared widgets (level meter)
 PLAN.md                        full product and implementation plan
 CMakeLists.txt                 build definition
@@ -174,7 +211,7 @@ CMakeLists.txt                 build definition
 
 ## Development smoke tests
 
-Debug builds support two development-only hooks:
+Debug builds support development-only hooks:
 
 ```bash
 # Start the transport and metronome after two seconds.
@@ -199,7 +236,23 @@ PANLOOP_SCREENSHOT_DELAY_MS=11000 \
 ./build/pan-loop_artefacts/Debug/Pan\ Loop
 ```
 
-This records a first loop at 3 s, stops at 5 s, records an overdub at 6 s, stops at 8.5 s, then arms and discards another take. `PANLOOP_TEST_LOOP_SNAP=1` enables bar snap. `PANLOOP_TEST_LOOP_EXTRA=1` adds a finalized-layer discard at 11.5 s and a full layer clear at 13 s. The screenshot hook renders the UI offscreen to a PNG, which is useful in headless or window-manager-constrained environments. All of these hooks are compiled out of release builds.
+This records a first loop at 3 s, stops at 5 s, records an overdub at 6 s, stops at 8.5 s, then arms and discards another take. `PANLOOP_TEST_LOOP_SNAP=1` enables bar snap. `PANLOOP_TEST_LOOP_EXTRA=1` adds a finalized-layer discard at 11.5 s and a full layer clear at 13 s. The screenshot hook renders the UI offscreen to a PNG, which is useful in headless or window-manager-constrained environments.
+
+MIDI smoke test:
+
+```bash
+# Learn Record from a simulated CC 20 message.
+PANLOOP_TEST_MIDI_LEARN=record \
+PANLOOP_TEST_MIDI_INJECT="cc:20:127" \
+PANLOOP_TEST_MIDI_DEVICE="Midi Through" \
+./build/pan-loop_artefacts/Debug/Pan\ Loop
+
+# Trigger Record -> Stop -> Discard using three simulated CC messages.
+PANLOOP_TEST_MIDI_INJECT="cc:20:127|cc:21:127|cc:22:127" \
+./build/pan-loop_artefacts/Debug/Pan\ Loop
+```
+
+`PANLOOP_TEST_MIDI_INJECT` separates messages with `|`; each token is `cc:number:value`, `note:number:velocity` or `pc:number:value`. `PANLOOP_TEST_MIDI_DEVICE` selects a device by name substring. These hooks use the same learn/dispatch path as hardware MIDI. All development hooks are compiled out of release builds.
 
 ## Roadmap
 
@@ -207,7 +260,7 @@ This records a first loop at 3 s, stops at 5 s, records an overdub at 6 s, stops
 2. **Phase 2 — transport and metronome**: transport clock, BPM/time signature, metronome, latency readout, Live transport panel. *(complete)*
 3. **Phase 3 — backing playlist**: file decoding/resampling, ordered playlist, gapless looping, per-file gain, memory display. *(complete)*
 4. **Phase 4 — live looper**: first-loop capture, bar snap, overdub auto-stop, Stop/Discard state machine, latency compensation, layers/mix controls, live-layer trimming. *(complete)*
-5. **Phase 5 — MIDI control**: MIDI Learn, action mappings, persistence, Blackstar quick start.
+5. **Phase 5 — MIDI control**: MIDI Learn, action mappings, persistence, Blackstar quick start. *(complete)*
 6. **Phase 6 — session and polish**: save/load, layer WAVs, mixdown export, performance view, AppImage packaging, tests.
 
 ## License

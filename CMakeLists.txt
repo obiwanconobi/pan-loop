@@ -64,8 +64,10 @@ target_sources(pan-loop PRIVATE
     src/audio/Transport.h
     src/core/AppConfig.cpp
     src/core/AppConfig.h
+    src/midi/MidiAction.h
     src/midi/MidiManager.cpp
     src/midi/MidiManager.h
+    src/midi/MidiMapping.h
     src/midi/MidiPanel.cpp
     src/midi/MidiPanel.h
     src/ui/LevelMeter.cpp
