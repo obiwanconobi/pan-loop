@@ -7,7 +7,7 @@
 
 class AudioEngine;
 
-/** Device selection, monitoring, gain and meter controls for phase 1. */
+/** Device selection, sample rate/buffer size, monitoring, gain and meter controls. */
 class AudioSettingsPanel final : public juce::Component,
                                  private juce::Timer
 {
@@ -27,6 +27,7 @@ private:
     void rebuildBackendList();
     void rebuildDeviceLists();
     void rebuildSampleRateList();
+    void rebuildBufferSizeList();
     void applyDeviceSelection();
     void updateStatus();
     void updateMeters();
@@ -43,13 +44,17 @@ private:
     juce::Label outputLabel;
     juce::Label sampleRateLabel;
     juce::Label sampleRateHintLabel;
+    juce::Label bufferSizeLabel;
+    juce::Label bufferSizeHintLabel;
 
     juce::ComboBox backendBox;
     juce::ComboBox inputBox;
     juce::ComboBox outputBox;
     juce::ComboBox sampleRateBox;
+    juce::ComboBox bufferSizeBox;
 
     std::vector<double> sampleRates;
+    std::vector<int> bufferSizes;
 
     juce::TextButton applyButton { "Apply" };
     juce::TextButton rescanButton { "Rescan" };
@@ -75,6 +80,7 @@ private:
 
     bool updatingControls = false;
     int clipHoldTicks = 0;
+    int lastObservedBufferSize = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioSettingsPanel)
 };

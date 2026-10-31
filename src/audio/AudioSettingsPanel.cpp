@@ -1,6 +1,7 @@
 #include "AudioSettingsPanel.h"
 #include "AudioEngine.h"
 #include "AudioSetup.h"
+#include "BufferSizeControl.h"
 #include "app/DarkLookAndFeel.h"
 #include "ui/LevelMeter.h"
 
@@ -47,6 +48,8 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
     styleLabel (outputLabel, 14.0f);
     styleLabel (sampleRateLabel, 14.0f);
     styleLabel (sampleRateHintLabel, 12.0f);
+    styleLabel (bufferSizeLabel, 14.0f);
+    styleLabel (bufferSizeHintLabel, 12.0f);
     styleLabel (jackStatusLabel, 14.0f, true);
     styleLabel (statusLabel, 13.0f, true);
 
@@ -56,6 +59,10 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
     sampleRateLabel.setText ("Sample rate", juce::dontSendNotification);
     sampleRateHintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
     sampleRateHintLabel.setJustificationType (juce::Justification::centredLeft);
+
+    bufferSizeLabel.setText ("Buffer size", juce::dontSendNotification);
+    bufferSizeHintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+    bufferSizeHintLabel.setJustificationType (juce::Justification::centredLeft);
 
     statusLabel.setJustificationType (juce::Justification::topLeft);
 
@@ -70,10 +77,13 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
     addAndMakeVisible (outputLabel);
     addAndMakeVisible (sampleRateLabel);
     addAndMakeVisible (sampleRateHintLabel);
+    addAndMakeVisible (bufferSizeLabel);
+    addAndMakeVisible (bufferSizeHintLabel);
     addAndMakeVisible (backendBox);
     addAndMakeVisible (inputBox);
     addAndMakeVisible (outputBox);
     addAndMakeVisible (sampleRateBox);
+    addAndMakeVisible (bufferSizeBox);
     addAndMakeVisible (applyButton);
     addAndMakeVisible (rescanButton);
     addAndMakeVisible (jackStatusLabel);
@@ -159,11 +169,15 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
             showError (error);
             rebuildBackendList();
             rebuildDeviceLists();
+            rebuildSampleRateList();
+            rebuildBufferSizeList();
             updateStatus();
             return;
         }
 
         rebuildDeviceLists();
+        rebuildSampleRateList();
+        rebuildBufferSizeList();
         applyDeviceSelection();
     };
 
@@ -173,6 +187,7 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
     {
         rebuildDeviceLists();
         rebuildSampleRateList();
+        rebuildBufferSizeList();
         updateStatus();
     };
 
@@ -204,16 +219,38 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
     rebuildBackendList();
     rebuildDeviceLists();
     rebuildSampleRateList();
+    rebuildBufferSizeList();
     updateStatus();
 
     startTimerHz (30);
+
+   #if JUCE_DEBUG
+    const auto testBufferSize = juce::SystemStats::getEnvironmentVariable ("PANLOOP_TEST_BUFFER_SIZE", {});
+
+    if (testBufferSize.isNotEmpty())
+    {
+        juce::Component::SafePointer<AudioSettingsPanel> safeThis (this);
+
+        juce::Timer::callAfterDelay (2000, [safeThis, testBufferSize]
+        {
+            if (safeThis == nullptr)
+                return;
+
+            const auto error = BufferSizeControl::apply (testBufferSize.getIntValue());
+            juce::Logger::writeToLog ("Test buffer size " + testBufferSize + ": "
+                                      + (error.isEmpty() ? "ok" : error));
+            safeThis->rebuildBufferSizeList();
+            safeThis->updateStatus();
+        });
+    }
+   #endif
 }
 
 void AudioSettingsPanel::resized()
 {
     auto area = getLocalBounds().reduced (18);
 
-    deviceGroup.setBounds (area.removeFromTop (290));
+    deviceGroup.setBounds (area.removeFromTop (334));
     area.removeFromTop (14);
     mixGroup.setBounds (area.removeFromTop (250));
     area.removeFromTop (10);
@@ -246,6 +283,13 @@ void AudioSettingsPanel::resized()
         sampleRateBox.setBounds (row.removeFromLeft (170));
         row.removeFromLeft (10);
         sampleRateHintLabel.setBounds (row.removeFromLeft (420));
+
+        inner.removeFromTop (10);
+        row = inner.removeFromTop (30);
+        bufferSizeLabel.setBounds (row.removeFromLeft (95));
+        bufferSizeBox.setBounds (row.removeFromLeft (170));
+        row.removeFromLeft (10);
+        bufferSizeHintLabel.setBounds (row.removeFromLeft (420));
 
         inner.removeFromTop (10);
         row = inner.removeFromTop (30);
@@ -302,11 +346,21 @@ void AudioSettingsPanel::refreshFromManager()
     rebuildBackendList();
     rebuildDeviceLists();
     rebuildSampleRateList();
+    rebuildBufferSizeList();
     updateStatus();
 }
 
 void AudioSettingsPanel::timerCallback()
 {
+    auto* device = deviceManager.getCurrentAudioDevice();
+    const auto bufferSize = device != nullptr ? device->getCurrentBufferSizeSamples() : 0;
+
+    if (bufferSize != lastObservedBufferSize)
+    {
+        lastObservedBufferSize = bufferSize;
+        rebuildBufferSizeList();
+    }
+
     updateStatus();
     updateMeters();
 
@@ -470,6 +524,114 @@ void AudioSettingsPanel::rebuildSampleRateList()
                                      juce::dontSendNotification);
 }
 
+void AudioSettingsPanel::rebuildBufferSizeList()
+{
+    const juce::ScopedValueSetter<bool> guard (updatingControls, true);
+
+    auto* device = deviceManager.getCurrentAudioDevice();
+    const auto type = deviceManager.getCurrentAudioDeviceType();
+    const auto isJack = type.equalsIgnoreCase ("JACK");
+    const auto currentSize = device != nullptr ? device->getCurrentBufferSizeSamples() : 0;
+
+    bufferSizes.clear();
+    bufferSizeBox.clear (juce::dontSendNotification);
+
+    if (isJack)
+    {
+        const auto info = BufferSizeControl::query();
+        std::vector<int> sizes = info.choices;
+
+        if (currentSize > 0
+            && std::find (sizes.begin(), sizes.end(), currentSize) == sizes.end())
+            sizes.push_back (currentSize);
+
+        std::sort (sizes.begin(), sizes.end());
+        sizes.erase (std::unique (sizes.begin(), sizes.end()), sizes.end());
+        bufferSizes = sizes;
+
+        bufferSizeBox.addItem ("Auto (server)", 1);
+
+        for (int i = 0; i < static_cast<int> (bufferSizes.size()); ++i)
+            bufferSizeBox.addItem (juce::String (bufferSizes[static_cast<size_t> (i)])
+                                     + " samples", i + 2);
+
+        const auto target = currentSize > 0 ? currentSize : info.currentSamples;
+        int selectedId = 1;
+
+        for (int i = 0; i < static_cast<int> (bufferSizes.size()); ++i)
+            if (bufferSizes[static_cast<size_t> (i)] == target)
+                selectedId = i + 2;
+
+        bufferSizeBox.setSelectedId (selectedId, juce::dontSendNotification);
+
+        if (info.provider == "PipeWire")
+        {
+            bufferSizeBox.setEnabled (true);
+            bufferSizeHintLabel.setText ("PipeWire quantum - Apply changes the server period",
+                                         juce::dontSendNotification);
+        }
+        else if (info.jackBufferToolAvailable)
+        {
+            bufferSizeBox.setEnabled (true);
+            bufferSizeHintLabel.setText ("JACK period - Apply uses jack_bufsize",
+                                         juce::dontSendNotification);
+        }
+        else
+        {
+            bufferSizeBox.setEnabled (false);
+            bufferSizeHintLabel.setText ("JACK server period - change it in JACK/PipeWire",
+                                         juce::dontSendNotification);
+        }
+    }
+    else
+    {
+        bufferSizeBox.addItem ("Default", 1);
+
+        juce::Array<int> availableSizes;
+
+        if (device != nullptr)
+            availableSizes = device->getAvailableBufferSizes();
+
+        if (availableSizes.isEmpty())
+        {
+            for (const auto size : { 64, 128, 256, 512, 1024, 2048, 4096 })
+                availableSizes.add (size);
+        }
+
+        std::vector<int> sizes;
+
+        for (const auto size : availableSizes)
+            if (size > 0)
+                sizes.push_back (size);
+
+        if (currentSize > 0
+            && std::find (sizes.begin(), sizes.end(), currentSize) == sizes.end())
+            sizes.push_back (currentSize);
+
+        std::sort (sizes.begin(), sizes.end());
+        sizes.erase (std::unique (sizes.begin(), sizes.end()), sizes.end());
+        bufferSizes = sizes;
+
+        int selectedId = 1;
+
+        for (int i = 0; i < static_cast<int> (bufferSizes.size()); ++i)
+        {
+            bufferSizeBox.addItem (juce::String (bufferSizes[static_cast<size_t> (i)])
+                                     + " samples", i + 2);
+
+            if (bufferSizes[static_cast<size_t> (i)] == currentSize)
+                selectedId = i + 2;
+        }
+
+        bufferSizeBox.setSelectedId (selectedId, juce::dontSendNotification);
+        bufferSizeBox.setEnabled (device != nullptr);
+        bufferSizeHintLabel.setText (device != nullptr
+                                       ? "Choose a size, then Apply"
+                                       : "Default device buffer",
+                                     juce::dontSendNotification);
+    }
+}
+
 void AudioSettingsPanel::applyDeviceSelection()
 {
     const auto inputName = inputBox.getText();
@@ -490,14 +652,41 @@ void AudioSettingsPanel::applyDeviceSelection()
         requestedSampleRate = sampleRates[static_cast<size_t> (selectedRateId - 2)];
     }
 
-    // JACK owns its graph sample rate; the app can only follow it.
-    if (deviceManager.getCurrentAudioDeviceType().equalsIgnoreCase ("JACK"))
+    int requestedBufferSize = 0;
+    const auto selectedBufferId = bufferSizeBox.getSelectedId();
+
+    if (selectedBufferId >= 2
+        && selectedBufferId - 2 < static_cast<int> (bufferSizes.size()))
+    {
+        requestedBufferSize = bufferSizes[static_cast<size_t> (selectedBufferId - 2)];
+    }
+
+    const auto isJack = deviceManager.getCurrentAudioDeviceType().equalsIgnoreCase ("JACK");
+
+    if (isJack)
+    {
+        // JACK owns its graph rate/buffer. On PipeWire the quantum can still be
+        // changed through the settings metadata; native JACK uses jack_bufsize.
+        if (bufferSizeBox.isEnabled())
+        {
+            const auto bufferError = BufferSizeControl::apply (requestedBufferSize);
+
+            if (bufferError.isNotEmpty())
+            {
+                showError (bufferError);
+                return;
+            }
+        }
+
         requestedSampleRate = 0.0;
+        requestedBufferSize = 0;
+    }
 
     const auto error = AudioSetup::applyStereoSetup (deviceManager,
                                                      inputName,
                                                      outputName,
-                                                     requestedSampleRate);
+                                                     requestedSampleRate,
+                                                     requestedBufferSize);
 
     if (error.isNotEmpty())
         showError (error);
@@ -507,6 +696,7 @@ void AudioSettingsPanel::applyDeviceSelection()
     updateStatus();
     rebuildDeviceLists();
     rebuildSampleRateList();
+    rebuildBufferSizeList();
 }
 
 void AudioSettingsPanel::updateStatus()

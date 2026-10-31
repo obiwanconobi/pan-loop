@@ -76,7 +76,8 @@ namespace AudioSetup
     juce::String applyStereoSetup (juce::AudioDeviceManager& manager,
                                    const juce::String& inputDeviceName,
                                    const juce::String& outputDeviceName,
-                                   double requestedSampleRate)
+                                   double requestedSampleRate,
+                                   int requestedBufferSize)
     {
         auto setup = manager.getAudioDeviceSetup();
 
@@ -91,7 +92,7 @@ namespace AudioSetup
         setup.useDefaultInputChannels = false;
         setup.useDefaultOutputChannels = false;
         setup.sampleRate = requestedSampleRate;
-        setup.bufferSize = 0;
+        setup.bufferSize = requestedBufferSize;
 
         auto tryOpen = [&manager, &setup] (int numInputs, int numOutputs)
         {

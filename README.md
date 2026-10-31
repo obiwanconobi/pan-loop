@@ -59,15 +59,15 @@ Implemented so far:
 - MIDI actions dispatched safely on the message thread; repeated messages are debounced
 - Backing mute toggle in the Playlist tab and input-monitor synchronization in the Audio tab
 - MIDI Learn and action dispatch verified with injected CC, Note and Program Change messages, including mapping persistence across restarts
-- **Sample rate selection** in the Audio tab for non-JACK backends
-- JACK's server-owned sample rate is displayed read-only with a clear hint
+- **Sample rate and buffer size selection** in the Audio tab for non-JACK backends
+- On JACK, the sample rate is displayed read-only; the buffer size can be changed when the JACK server is PipeWire (via `pw-metadata`) or when the native JACK `jack_bufsize` tool is available
 - **Session save/load** (`.panloop` JSON plus a `<name>.layers/` sidecar directory of 32-bit float WAV layer files)
 - Sessions restore the backing playlist, live layers, layer gain/mute/solo, cycle length, BPM/time signature, bar snap, metronome, input monitoring, backing mute, record offset and MIDI mappings
 - Session loading rejects a sample-rate mismatch instead of silently resampling live layers
 - **Mixdown export** to a stereo 32-bit float WAV file covering exactly one master cycle, including the audible backing/layer mix and output gain
 - **Performance view** with oversized Record, Stop Rec, Discard and Play/Pause controls, cycle progress, backing/layer status and large input/output meters; toggle with the header button or `F11`, exit with `Esc`
 - **AppImage packaging** via `scripts/build-appimage.sh`, plus desktop entry and scalable application icon
-- **Automated tests** for transport, playlist playback, live-layer save/restore and offline mixing, MIDI mapping helpers, session round-trips, sample-rate mismatch handling and mixdown export (`ctest`)
+- **Automated tests** for transport, playlist playback, live-layer save/restore and offline mixing, MIDI mapping helpers, PipeWire metadata parsing, session round-trips, sample-rate mismatch handling and mixdown export (`ctest`)
 
 ### Backing playlist notes
 
@@ -206,10 +206,14 @@ pw-link -l | grep -A4 -B4 pan-loop
 
 If JACK is not running, the Audio tab lets you select another backend (ALSA / PulseAudio) for basic testing. JACK is the intended backend for the final application.
 
-### Sample rate
+### Sample rate and buffer size
 
-- **JACK owns the sample rate.** The Audio tab shows the current JACK server rate and explains that it must be changed in the JACK server/PipeWire configuration (for example with `qjackctl` or PipeWire metadata).
-- For **ALSA / PulseAudio** fallback backends, the Audio tab exposes a sample rate selector. Choose a rate and press **Apply**.
+The Audio tab has separate **Sample rate** and **Buffer size** selectors. Both use the same **Apply** button.
+
+- **JACK owns the sample rate.** The Audio tab shows the current JACK server rate read-only and explains that it must be changed in the JACK server/PipeWire configuration (for example with `qjackctl` or PipeWire metadata).
+- **Buffer size is the number of samples per audio callback/period.** For **ALSA / PulseAudio** fallback backends, choose an available buffer size and press **Apply**.
+- When JACK is provided by **PipeWire**, the buffer size selector is enabled and changes the PipeWire graph quantum with `pw-metadata -n settings 0 clock.force-quantum <samples>`. This is the usual way to lower the JACK period below the 1024-sample default on PipeWire systems. Selecting **Auto (server)** clears the forced quantum (`0`).
+- On native JACK, the app uses the `jack_bufsize` tool when it is installed. If neither PipeWire metadata nor the JACK tool is available, the period remains server-owned and the control is disabled with an explanatory hint.
 - If the JACK server rate changes and the app reopens its audio device, the preloaded playlist and live layers are cleared because those buffers are tied to the previous rate. Restart the app or reselect the device after changing the JACK server rate.
 - Session files record the sample rate and refuse to load at a different rate, so live layers stay sample-aligned. Audio device selection itself is not persisted yet; choose the JACK device again after restarting the app.
 
@@ -300,9 +304,16 @@ PANLOOP_SCREENSHOT=/tmp/pan-loop-performance.png \
 PANLOOP_SCREENSHOT_PERFORMANCE=1 \
 PANLOOP_SCREENSHOT_DELAY_MS=3500 \
 ./build/pan-loop_artefacts/Debug/pan-loop
+
+# Apply a PipeWire/JACK buffer size shortly after startup and log the result.
+PANLOOP_TEST_BUFFER_SIZE=256 \
+PANLOOP_SCREENSHOT=/tmp/pan-loop-audio.png \
+PANLOOP_SCREENSHOT_TAB=3 \
+PANLOOP_SCREENSHOT_DELAY_MS=4000 \
+./build/pan-loop_artefacts/Debug/pan-loop
 ```
 
-`PANLOOP_DEMO` is useful for checking the transport clock, metronome audio and UI without touching the mouse. `PANLOOP_TEST_PLAYLIST` separates file paths with semicolons and loads them through the normal background loader. When a test playlist is present, the demo hook leaves the metronome off so recorded output contains only the backing files; set `PANLOOP_DEMO_METRONOME=1` to keep the click on while testing a playlist.
+`PANLOOP_TEST_BUFFER_SIZE` uses the same path as the Audio tab's **Apply** button and changes the PipeWire/JACK server period; select **Auto (server)** in the Audio tab (or set `clock.force-quantum` to `0`) to restore automatic quantum selection. `PANLOOP_DEMO` is useful for checking the transport clock, metronome audio and UI without touching the mouse. `PANLOOP_TEST_PLAYLIST` separates file paths with semicolons and loads them through the normal background loader. When a test playlist is present, the demo hook leaves the metronome off so recorded output contains only the backing files; set `PANLOOP_DEMO_METRONOME=1` to keep the click on while testing a playlist.
 
 Live-loop smoke test:
 

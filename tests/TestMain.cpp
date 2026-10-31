@@ -2,6 +2,7 @@
 
 #include "audio/AudioEngine.h"
 #include "audio/AudioFileLoader.h"
+#include "audio/BufferSizeControl.h"
 #include "audio/LiveLooper.h"
 #include "audio/Playlist.h"
 #include "audio/Transport.h"
@@ -318,6 +319,27 @@ namespace
                     "MIDI mapping description includes type and channel");
     }
 
+    void testBufferSizeMetadata (TestContext& test)
+    {
+        const juce::String metadata =
+            "Found \"settings\" metadata 31\n"
+            "update: id:0 key:'clock.rate' value:'48000' type:''\n"
+            "update: id:0 key:'clock.quantum' value:'1024' type:''\n"
+            "update: id:0 key:'clock.min-quantum' value:'32' type:''\n"
+            "update: id:0 key:'clock.max-quantum' value:'2048' type:''\n"
+            "update: id:0 key:'clock.force-quantum' value:'256' type:''\n";
+
+        const auto state = BufferSizeControl::parsePipeWireMetadata (metadata);
+        test.check (state.valid, "PipeWire metadata is recognised");
+        test.check (state.quantum == 1024, "PipeWire quantum is parsed");
+        test.check (state.forceQuantum == 256, "PipeWire forced quantum is parsed");
+        test.check (state.minQuantum == 32 && state.maxQuantum == 2048,
+                    "PipeWire quantum limits are parsed");
+
+        const auto empty = BufferSizeControl::parsePipeWireMetadata ("no metadata here");
+        test.check (! empty.valid, "Invalid PipeWire metadata is rejected");
+    }
+
     void testSessionRoundTrip (TestContext& test, const juce::File& root)
     {
         FakeAudioDevice device (48000.0, 512);
@@ -522,6 +544,7 @@ int main()
     testPlaylist (test);
     testLiveLooper (test);
     testMidiMappingHelpers (test);
+    testBufferSizeMetadata (test);
     testSessionRoundTrip (test, root);
 
     root.deleteRecursively();

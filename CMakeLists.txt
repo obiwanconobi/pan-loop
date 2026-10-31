@@ -63,6 +63,8 @@ target_sources(pan-loop PRIVATE
     src/audio/AudioSettingsPanel.cpp
     src/audio/AudioSettingsPanel.h
     src/audio/AudioSetup.cpp
+    src/audio/BufferSizeControl.cpp
+    src/audio/BufferSizeControl.h
     src/audio/AudioSetup.h
     src/audio/LiveLooper.cpp
     src/audio/LiveLooper.h
@@ -130,6 +132,8 @@ if (PANLOOP_BUILD_TESTS)
         src/audio/AudioEngine.h
         src/audio/AudioFileLoader.cpp
         src/audio/AudioFileLoader.h
+        src/audio/BufferSizeControl.cpp
+        src/audio/BufferSizeControl.h
         src/audio/LiveLooper.cpp
         src/audio/LiveLooper.h
         src/audio/Metronome.cpp
