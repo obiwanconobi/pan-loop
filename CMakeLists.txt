@@ -86,6 +86,8 @@ target_sources(pan-loop PRIVATE
     src/midi/MidiMapping.h
     src/midi/MidiPanel.cpp
     src/midi/MidiPanel.h
+    src/midi/MidiProfile.cpp
+    src/midi/MidiProfile.h
     src/midi/RawMidiInput.cpp
     src/midi/RawMidiInput.h
     src/session/SessionStore.cpp
@@ -154,6 +156,8 @@ if (PANLOOP_BUILD_TESTS)
         src/audio/Transport.h
         src/midi/MidiAction.h
         src/midi/MidiMapping.h
+        src/midi/MidiProfile.cpp
+        src/midi/MidiProfile.h
         src/midi/RawMidiInput.cpp
         src/midi/RawMidiInput.h
         src/session/SessionStore.cpp

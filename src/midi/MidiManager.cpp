@@ -18,6 +18,7 @@ MidiManager::MidiManager (juce::AudioDeviceManager& manager)
     refreshDeviceList();
     autoSelectLiveLogic();
     loadMappings();
+    loadProfiles();
 }
 
 MidiManager::~MidiManager()
@@ -434,6 +435,133 @@ void MidiManager::restoreMappingsForSession (const std::vector<MidiMapping>& new
                               + " MIDI mappings from session");
 }
 
+juce::StringArray MidiManager::getProfileNames() const
+{
+    juce::StringArray names;
+
+    for (const auto& profile : profiles)
+        names.add (profile.name);
+
+    names.sort (true);
+    return names;
+}
+
+juce::String MidiManager::saveCurrentProfile (const juce::String& name)
+{
+    const auto trimmed = name.trim();
+
+    if (trimmed.isEmpty())
+        return "Enter a preset name.";
+
+    MidiProfile profile;
+    profile.name = trimmed;
+    profile.deviceIdentifier = getEnabledDeviceIdentifier();
+
+    for (const auto& device : getAvailableDevices())
+    {
+        if (device.identifier == profile.deviceIdentifier)
+        {
+            profile.deviceName = device.name;
+            break;
+        }
+    }
+
+    profile.mappings = getMappingsForSession();
+
+    profiles.erase (std::remove_if (profiles.begin(), profiles.end(),
+                                    [&trimmed] (const MidiProfile& existing)
+                                    {
+                                        return existing.name.equalsIgnoreCase (trimmed);
+                                    }),
+                    profiles.end());
+
+    profiles.push_back (std::move (profile));
+
+    if (! saveProfiles())
+        return "Could not write the MIDI preset file.";
+
+    juce::Logger::writeToLog ("Saved MIDI preset: " + trimmed);
+    return {};
+}
+
+juce::String MidiManager::applyProfile (const juce::String& name)
+{
+    const auto* found = findProfile (name);
+
+    if (found == nullptr)
+        return "MIDI preset not found: " + name;
+
+    const auto profile = *found;
+    restoreMappingsForSession (profile.mappings);
+
+    if (profile.deviceIdentifier.isEmpty() && profile.deviceName.isEmpty())
+        return {};
+
+    juce::MidiDeviceInfo target;
+    bool foundDevice = false;
+    const auto devices = getAvailableDevices();
+
+    for (const auto& device : devices)
+    {
+        if (device.identifier == profile.deviceIdentifier)
+        {
+            target = device;
+            foundDevice = true;
+            break;
+        }
+    }
+
+    if (! foundDevice)
+    {
+        for (const auto& device : devices)
+        {
+            if (device.name.equalsIgnoreCase (profile.deviceName))
+            {
+                target = device;
+                foundDevice = true;
+                break;
+            }
+        }
+    }
+
+    if (! foundDevice)
+    {
+        return "Mappings loaded, but " + profile.deviceName
+             + " is not connected.";
+    }
+
+    setDevice (target.identifier);
+
+    if (getEnabledDeviceIdentifier() != target.identifier)
+    {
+        return "Mappings loaded, but the MIDI device could not be opened: "
+             + target.name;
+    }
+
+    juce::Logger::writeToLog ("Applied MIDI preset: " + name);
+    return {};
+}
+
+juce::String MidiManager::deleteProfile (const juce::String& name)
+{
+    const auto oldSize = profiles.size();
+    profiles.erase (std::remove_if (profiles.begin(), profiles.end(),
+                                    [&name] (const MidiProfile& profile)
+                                    {
+                                        return profile.name.equalsIgnoreCase (name);
+                                    }),
+                    profiles.end());
+
+    if (profiles.size() == oldSize)
+        return "MIDI preset not found: " + name;
+
+    if (! saveProfiles())
+        return "Could not write the MIDI preset file.";
+
+    juce::Logger::writeToLog ("Deleted MIDI preset: " + name);
+    return {};
+}
+
 void MidiManager::clearMapping (MidiAction action)
 {
     bool changed = false;
@@ -578,6 +706,32 @@ void MidiManager::setMapping (const MidiMapping& mapping)
 juce::File MidiManager::getMappingFile()
 {
     return AppConfig::getConfigDirectory().getChildFile ("midi-map.txt");
+}
+
+juce::File MidiManager::getProfilesFile()
+{
+    return AppConfig::getConfigDirectory().getChildFile ("midi-profiles.json");
+}
+
+void MidiManager::loadProfiles()
+{
+    profiles = MidiProfileStore::load (getProfilesFile());
+    juce::Logger::writeToLog ("Loaded " + juce::String (static_cast<int> (profiles.size()))
+                              + " MIDI presets");
+}
+
+bool MidiManager::saveProfiles()
+{
+    return MidiProfileStore::save (getProfilesFile(), profiles);
+}
+
+const MidiProfile* MidiManager::findProfile (const juce::String& name) const
+{
+    for (const auto& profile : profiles)
+        if (profile.name.equalsIgnoreCase (name))
+            return &profile;
+
+    return nullptr;
 }
 
 void MidiManager::loadMappings()

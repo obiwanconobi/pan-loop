@@ -8,6 +8,7 @@
 #include "audio/Transport.h"
 #include "midi/MidiAction.h"
 #include "midi/MidiMapping.h"
+#include "midi/MidiProfile.h"
 #include "midi/RawMidiInput.h"
 #include "session/SessionStore.h"
 
@@ -363,6 +364,32 @@ namespace
                     "Malformed raw MIDI identifiers are rejected");
     }
 
+    void testMidiProfileSerialization (TestContext& test)
+    {
+        MidiProfile profile;
+        profile.name = "Blackstar stage";
+        profile.deviceName = "Live Logic MIDI Controller (raw MIDI)";
+        profile.deviceIdentifier = "rawmidi:3:0";
+        profile.mappings = {
+            { MidiAction::Record, MidiMappingType::ControlChange, 1, 20 },
+            { MidiAction::PlayPause, MidiMappingType::NoteOn, 2, 61 }
+        };
+
+        const auto json = MidiProfileStore::serialise ({ profile });
+        const auto parsed = MidiProfileStore::parse (json);
+        test.check (parsed.size() == 1, "MIDI preset serialises and parses");
+        test.check (parsed[0].name == "Blackstar stage"
+                        && parsed[0].deviceName == profile.deviceName
+                        && parsed[0].deviceIdentifier == profile.deviceIdentifier,
+                    "MIDI preset restores the device");
+        test.check (parsed[0].mappings.size() == 2
+                        && parsed[0].mappings[0].action == MidiAction::Record
+                        && parsed[0].mappings[1].type == MidiMappingType::NoteOn,
+                    "MIDI preset restores mappings");
+        test.check (MidiProfileStore::parse ("{}").empty(),
+                    "Invalid MIDI preset JSON is rejected");
+    }
+
     void testSessionRoundTrip (TestContext& test, const juce::File& root)
     {
         FakeAudioDevice device (48000.0, 512);
@@ -571,6 +598,7 @@ int main()
     testMidiMappingHelpers (test);
     testBufferSizeMetadata (test);
     testRawMidiIdentifiers (test);
+    testMidiProfileSerialization (test);
     testSessionRoundTrip (test, root);
 
     root.deleteRecursively();

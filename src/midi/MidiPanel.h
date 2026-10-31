@@ -29,9 +29,14 @@ private:
 
     void timerCallback() override;
     void rebuildDeviceList();
+    void rebuildProfileList (const juce::String& selectName = {});
     void updateSelection();
     void buildMappingRows();
     void updateMappingRows();
+    void saveCurrentProfile();
+    void deleteSelectedProfile();
+    juce::String getSelectedProfileName() const;
+    void setProfileStatus (const juce::String& message, bool isError);
 
     MidiManager& midi;
 
@@ -44,13 +49,20 @@ private:
     juce::Label lastMessageLabel;
     juce::Label hintLabel;
     juce::Label mappingHintLabel;
+    juce::Label profileLabel;
+    juce::Label profileStatusLabel;
 
     juce::ComboBox deviceBox;
+    juce::ComboBox profileBox;
+    juce::TextEditor profileNameEditor;
     juce::TextButton rescanButton { "Rescan" };
+    juce::TextButton saveProfileButton { "Save" };
+    juce::TextButton deleteProfileButton { "Delete" };
     juce::TextEditor logEditor;
 
     std::vector<std::unique_ptr<MappingRow>> mappingRows;
     juce::Array<juce::MidiDeviceInfo> devices;
+    juce::StringArray profileNames;
     juce::Rectangle<int> activityBounds;
     juce::uint64 lastSeenCount = 0;
     int activityHoldTicks = 0;

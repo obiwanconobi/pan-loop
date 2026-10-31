@@ -97,6 +97,7 @@ A dark, high-contrast, stage-friendly UI:
 - **MIDI learn**: click Learn next to an action, press the footswitch, mapping is stored. Handles press/release messages and debounce.
 - Assignable actions: Record, Stop Recording, Discard, Play/Pause, Clear Layers, Backing Mute, Input Monitor toggle, Undo Discard.
 - Mappings persist globally and per session; auto-selects a device whose name contains “Live Logic”.
+- Named MIDI presets store the selected input device plus its mappings and can be restored from the preset list; presets are stored in `~/.config/pan-loop/midi-profiles.json`.
 - Suggested footswitch layout:
   - FS1: Record
   - FS2: Stop Recording

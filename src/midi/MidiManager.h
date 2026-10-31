@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "MidiMapping.h"
+#include "MidiProfile.h"
 
 #include <array>
 #include <atomic>
@@ -39,6 +40,12 @@ public:
     std::vector<MidiMapping> getMappingsForSession() const;
     void restoreMappingsForSession (const std::vector<MidiMapping>& newMappings);
 
+    /** Named MIDI presets. Each preset stores the input device and mappings. */
+    juce::StringArray getProfileNames() const;
+    juce::String saveCurrentProfile (const juce::String& name);
+    juce::String applyProfile (const juce::String& name);
+    juce::String deleteProfile (const juce::String& name);
+
     /** Called on the message thread when a mapped control is pressed. */
     std::function<void(MidiAction)> onAction;
 
@@ -74,8 +81,12 @@ private:
     void closeRawMidiDevice();
 
     static juce::File getMappingFile();
+    static juce::File getProfilesFile();
     void loadMappings();
     void saveMappings() const;
+    void loadProfiles();
+    bool saveProfiles();
+    const MidiProfile* findProfile (const juce::String& name) const;
 
     juce::AudioDeviceManager& deviceManager;
 
@@ -98,6 +109,8 @@ private:
 
     std::unique_ptr<RawMidiInput> rawMidiInput;
     juce::String rawMidiDeviceName;
+
+    std::vector<MidiProfile> profiles;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MidiManager)
 };

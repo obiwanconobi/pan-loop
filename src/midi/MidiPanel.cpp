@@ -29,14 +29,33 @@ MidiPanel::MidiPanel (MidiManager& midiManager)
     styleLabel (lastMessageLabel, 13.0f);
     styleLabel (hintLabel, 12.0f);
     styleLabel (mappingHintLabel, 12.0f);
+    styleLabel (profileLabel, 14.0f);
+    styleLabel (profileStatusLabel, 12.0f);
 
     deviceLabel.setText ("Device", juce::dontSendNotification);
     statusLabel.setText ("No MIDI input selected", juce::dontSendNotification);
     lastMessageLabel.setText ("No MIDI activity yet.", juce::dontSendNotification);
-    hintLabel.setText ("Select the Blackstar Live Logic above, then assign footswitches below.",
+    hintLabel.setText ("Choose an input, learn the footswitches, then save the setup as a preset.",
                        juce::dontSendNotification);
     hintLabel.setJustificationType (juce::Justification::topLeft);
     hintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+
+    profileLabel.setText ("Preset", juce::dontSendNotification);
+    profileStatusLabel.setText ("No preset selected.", juce::dontSendNotification);
+    profileStatusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+    profileStatusLabel.setJustificationType (juce::Justification::centredLeft);
+    deleteProfileButton.setEnabled (false);
+    saveProfileButton.setTooltip ("Save the current input device and footswitch mappings under the name in the box");
+    deleteProfileButton.setTooltip ("Delete the selected MIDI preset");
+    profileBox.setTooltip ("Choose a saved MIDI preset to restore its device and mappings");
+
+    profileNameEditor.setFont (juce::Font (juce::FontOptions (14.0f)));
+    profileNameEditor.setTextToShowWhenEmpty ("Preset name", DarkLookAndFeel::mutedText());
+    profileNameEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0f1115));
+    profileNameEditor.setColour (juce::TextEditor::textColourId, DarkLookAndFeel::text());
+    profileNameEditor.setColour (juce::TextEditor::outlineColourId, DarkLookAndFeel::outline());
+    profileNameEditor.setColour (juce::TextEditor::focusedOutlineColourId, DarkLookAndFeel::accent());
+    profileNameEditor.onReturnKey = [this] { saveCurrentProfile(); };
 
     mappingHintLabel.setText ("Click Learn, then press a footswitch. Suggested: "
                               "FS1 Record, FS2 Stop Recording, FS3 Discard.",
@@ -66,6 +85,12 @@ MidiPanel::MidiPanel (MidiManager& midiManager)
     addAndMakeVisible (mappingHintLabel);
     addAndMakeVisible (deviceBox);
     addAndMakeVisible (rescanButton);
+    addAndMakeVisible (profileLabel);
+    addAndMakeVisible (profileBox);
+    addAndMakeVisible (profileNameEditor);
+    addAndMakeVisible (profileStatusLabel);
+    addAndMakeVisible (saveProfileButton);
+    addAndMakeVisible (deleteProfileButton);
     addAndMakeVisible (logEditor);
 
     buildMappingRows();
@@ -76,21 +101,94 @@ MidiPanel::MidiPanel (MidiManager& midiManager)
             updateSelection();
     };
 
+    profileBox.onChange = [this]
+    {
+        if (updatingControls)
+            return;
+
+        deleteProfileButton.setEnabled (profileBox.getSelectedId() > 1);
+
+        const auto name = getSelectedProfileName();
+        profileNameEditor.setText (name, juce::dontSendNotification);
+
+        if (name.isEmpty())
+        {
+            setProfileStatus ("No preset selected.", false);
+            return;
+        }
+
+        const auto error = midi.applyProfile (name);
+        rebuildDeviceList();
+        updateMappingRows();
+        setProfileStatus (error.isNotEmpty() ? error
+                                             : "Preset loaded: " + name,
+                          error.isNotEmpty());
+    };
+
     rescanButton.onClick = [this]
     {
         rebuildDeviceList();
     };
 
+    saveProfileButton.onClick = [this] { saveCurrentProfile(); };
+    deleteProfileButton.onClick = [this] { deleteSelectedProfile(); };
+
     rebuildDeviceList();
+    rebuildProfileList();
     updateMappingRows();
     startTimerHz (30);
+
+   #if JUCE_DEBUG
+    const auto testProfile = juce::SystemStats::getEnvironmentVariable ("PANLOOP_TEST_MIDI_PROFILE", {});
+
+    if (testProfile.isNotEmpty())
+    {
+        juce::Component::SafePointer<MidiPanel> safeThis (this);
+
+        juce::Timer::callAfterDelay (1500, [safeThis, testProfile]
+        {
+            if (safeThis == nullptr)
+                return;
+
+            for (int i = 0; i < safeThis->profileNames.size(); ++i)
+            {
+                if (safeThis->profileNames[i].equalsIgnoreCase (testProfile))
+                {
+                    safeThis->profileBox.setSelectedId (i + 2, juce::sendNotification);
+                    break;
+                }
+            }
+        });
+    }
+
+    const auto testSaveProfile = juce::SystemStats::getEnvironmentVariable ("PANLOOP_TEST_MIDI_PROFILE_SAVE", {});
+
+    if (testSaveProfile.isNotEmpty())
+    {
+        juce::Component::SafePointer<MidiPanel> safeThis (this);
+
+        juce::Timer::callAfterDelay (2500, [safeThis, testSaveProfile]
+        {
+            if (safeThis == nullptr)
+                return;
+
+            const auto error = safeThis->midi.saveCurrentProfile (testSaveProfile);
+            safeThis->rebuildProfileList (testSaveProfile);
+            safeThis->setProfileStatus (
+                error.isNotEmpty() ? error : "Preset saved: " + testSaveProfile,
+                error.isNotEmpty());
+            juce::Logger::writeToLog ("Test MIDI profile save " + testSaveProfile + ": "
+                                      + (error.isEmpty() ? "ok" : error));
+        });
+    }
+   #endif
 }
 
 void MidiPanel::resized()
 {
     auto area = getLocalBounds().reduced (18);
 
-    deviceGroup.setBounds (area.removeFromTop (190));
+    deviceGroup.setBounds (area.removeFromTop (230));
     area.removeFromTop (10);
     mappingGroup.setBounds (area.removeFromTop (280));
     area.removeFromTop (10);
@@ -110,13 +208,27 @@ void MidiPanel::resized()
         activityBounds = row.removeFromLeft (36).reduced (10);
 
         inner.removeFromTop (8);
+        row = inner.removeFromTop (30);
+        profileLabel.setBounds (row.removeFromLeft (75));
+        profileBox.setBounds (row.removeFromLeft (240));
+        row.removeFromLeft (8);
+        profileNameEditor.setBounds (row.removeFromLeft (180).reduced (0, 1));
+        row.removeFromLeft (8);
+        saveProfileButton.setBounds (row.removeFromLeft (90).reduced (0, 1));
+        row.removeFromLeft (8);
+        deleteProfileButton.setBounds (row.removeFromLeft (80).reduced (0, 1));
+
+        inner.removeFromTop (4);
+        profileStatusLabel.setBounds (inner.removeFromTop (18));
+
+        inner.removeFromTop (6);
         statusLabel.setBounds (inner.removeFromTop (22));
 
         inner.removeFromTop (4);
         lastMessageLabel.setBounds (inner.removeFromTop (22));
 
         inner.removeFromTop (8);
-        hintLabel.setBounds (inner.removeFromTop (46));
+        hintLabel.setBounds (inner.removeFromTop (34));
     }
 
     {
@@ -242,6 +354,87 @@ void MidiPanel::rebuildDeviceList()
         statusLabel.setText ("Connected: " + deviceBox.getText(), juce::dontSendNotification);
         statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::playing());
     }
+}
+
+void MidiPanel::rebuildProfileList (const juce::String& selectName)
+{
+    const juce::ScopedValueSetter<bool> guard (updatingControls, true);
+
+    const auto previousName = selectName.isNotEmpty() ? selectName
+                                                      : getSelectedProfileName();
+    profileNames = midi.getProfileNames();
+
+    profileBox.clear (juce::dontSendNotification);
+    profileBox.addItem ("No preset", 1);
+
+    int selectedId = 1;
+
+    for (int i = 0; i < profileNames.size(); ++i)
+    {
+        profileBox.addItem (profileNames[i], i + 2);
+
+        if (profileNames[i].equalsIgnoreCase (previousName))
+            selectedId = i + 2;
+    }
+
+    profileBox.setSelectedId (selectedId, juce::dontSendNotification);
+    deleteProfileButton.setEnabled (selectedId > 1);
+
+    profileNameEditor.setText (selectedId > 1 ? profileNames[selectedId - 2]
+                                              : juce::String(),
+                               juce::dontSendNotification);
+}
+
+juce::String MidiPanel::getSelectedProfileName() const
+{
+    const auto selectedId = profileBox.getSelectedId();
+
+    if (selectedId <= 1 || selectedId - 2 >= profileNames.size())
+        return {};
+
+    return profileNames[selectedId - 2];
+}
+
+void MidiPanel::setProfileStatus (const juce::String& message, bool isError)
+{
+    profileStatusLabel.setColour (juce::Label::textColourId,
+                                  isError ? DarkLookAndFeel::recording()
+                                          : DarkLookAndFeel::mutedText());
+    profileStatusLabel.setText (message, juce::dontSendNotification);
+}
+
+void MidiPanel::saveCurrentProfile()
+{
+    const auto name = profileNameEditor.getText().trim();
+
+    if (name.isEmpty())
+    {
+        setProfileStatus ("Enter a preset name first.", true);
+        return;
+    }
+
+    const auto error = midi.saveCurrentProfile (name);
+    rebuildProfileList (name);
+    setProfileStatus (error.isNotEmpty() ? error
+                                         : "Preset saved: " + name,
+                      error.isNotEmpty());
+}
+
+void MidiPanel::deleteSelectedProfile()
+{
+    const auto name = getSelectedProfileName();
+
+    if (name.isEmpty())
+    {
+        setProfileStatus ("No preset selected to delete.", true);
+        return;
+    }
+
+    const auto error = midi.deleteProfile (name);
+    rebuildProfileList();
+    setProfileStatus (error.isNotEmpty() ? error
+                                         : "Preset deleted: " + name,
+                      error.isNotEmpty());
 }
 
 void MidiPanel::updateSelection()

@@ -26,6 +26,7 @@ Implemented so far:
 - Sample rate, buffer size, latency, xrun and CPU display
 - MIDI input enumeration, selection, hot-plug rescan and activity monitor
 - **ALSA raw-MIDI fallback** for USB devices that PipeWire takes over and therefore never appears as an ALSA sequencer client (shown with a `(raw MIDI)` suffix)
+- **Named MIDI presets** that save the selected input device together with the footswitch mappings, selectable from a preset list
 - Automatic selection of a device whose name contains “Live Logic”
 - Dark, stage-oriented UI with Live, Playlist, Layers, Audio, MIDI and Session tabs
 - File logging and per-user config paths
@@ -68,7 +69,7 @@ Implemented so far:
 - **Mixdown export** to a stereo 32-bit float WAV file covering exactly one master cycle, including the audible backing/layer mix and output gain
 - **Performance view** with oversized Record, Stop Rec, Discard and Play/Pause controls, cycle progress, backing/layer status and large input/output meters; toggle with the header button or `F11`, exit with `Esc`
 - **AppImage packaging** via `scripts/build-appimage.sh`, plus desktop entry and scalable application icon
-- **Automated tests** for transport, playlist playback, live-layer save/restore, panning and offline mixing, MIDI mapping/raw-MIDI identifier helpers, PipeWire metadata parsing, session round-trips, sample-rate mismatch handling and mixdown export (`ctest`)
+- **Automated tests** for transport, playlist playback, live-layer save/restore, panning and offline mixing, MIDI mapping/preset/raw-MIDI helpers, PipeWire metadata parsing, session round-trips, sample-rate mismatch handling and mixdown export (`ctest`)
 
 ### Backing playlist notes
 
@@ -253,7 +254,18 @@ GP-200 (raw MIDI)
 
 Both routes use the same Learn/mapping/action path. One MIDI input is active at a time; choose the device from the **MIDI** tab.
 
-Mappings are stored at:
+### MIDI presets
+
+Use the **Preset** row in the MIDI tab to keep multiple setups:
+
+1. Select the input device and learn the footswitch mappings you want.
+2. Type a name into the **Preset name** box and press **Save** (or press Enter).
+3. Pick the preset from the list later to restore both the input device and its mappings.
+4. Use **Delete** to remove the selected preset.
+
+Saving with an existing name replaces that preset. Selecting a preset fills the name box, so you can load it, tweak mappings, and press **Save** again to update it. Presets are stored in `~/.config/pan-loop/midi-profiles.json`. If a preset’s device is not connected when it is selected, the mappings are still restored and the app reports that the device is unavailable.
+
+Mappings are also stored globally at:
 
 `~/.config/pan-loop/midi-map.txt`
 
@@ -275,6 +287,7 @@ Each mapping stores the MIDI channel and number. For CC messages, values 64-127 
 - Config directory: `~/.config/pan-loop/`
 - Log file: `~/.config/pan-loop/pan-loop.log`
 - MIDI map: `~/.config/pan-loop/midi-map.txt`
+- MIDI presets: `~/.config/pan-loop/midi-profiles.json`
 - Sessions directory: `~/.config/pan-loop/sessions/` (default location for saved `.panloop` files)
 
 The Session tab shows these paths, saves/loads sessions, exports mixdowns and can copy a diagnostics block to the clipboard.
@@ -353,7 +366,7 @@ PANLOOP_TEST_MIDI_INJECT="cc:20:127|cc:21:127|cc:22:127" \
 ./build/pan-loop_artefacts/Debug/pan-loop
 ```
 
-`PANLOOP_TEST_MIDI_INJECT` separates messages with `|`; each token is `cc:number:value`, `note:number:velocity` or `pc:number:value`. `PANLOOP_TEST_MIDI_DEVICE` selects a device by name substring. These hooks use the same learn/dispatch path as hardware MIDI. All development hooks are compiled out of release builds.
+`PANLOOP_TEST_MIDI_INJECT` separates messages with `|`; each token is `cc:number:value`, `note:number:velocity` or `pc:number:value`. `PANLOOP_TEST_MIDI_DEVICE` selects a device by name substring. `PANLOOP_TEST_MIDI_PROFILE` selects a saved preset after startup, and `PANLOOP_TEST_MIDI_PROFILE_SAVE` saves the current setup under the given name. These hooks use the same paths as the UI and hardware, and all development hooks are compiled out of release builds.
 
 ## Roadmap
 
