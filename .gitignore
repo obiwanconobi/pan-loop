@@ -1,0 +1,20 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+
+# CMake / editor metadata
+compile_commands.json
+.cache/
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local runtime data
+*.panloop/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
