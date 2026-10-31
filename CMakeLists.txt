@@ -38,6 +38,8 @@ target_sources(pan-loop PRIVATE
     src/Main.cpp
     src/app/DarkLookAndFeel.cpp
     src/app/DarkLookAndFeel.h
+    src/app/LivePanel.cpp
+    src/app/LivePanel.h
     src/app/MainComponent.cpp
     src/app/MainComponent.h
     src/audio/AudioEngine.cpp
@@ -46,6 +48,10 @@ target_sources(pan-loop PRIVATE
     src/audio/AudioSettingsPanel.h
     src/audio/AudioSetup.cpp
     src/audio/AudioSetup.h
+    src/audio/Metronome.cpp
+    src/audio/Metronome.h
+    src/audio/Transport.cpp
+    src/audio/Transport.h
     src/core/AppConfig.cpp
     src/core/AppConfig.h
     src/midi/MidiManager.cpp

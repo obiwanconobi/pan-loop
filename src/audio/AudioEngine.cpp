@@ -1,5 +1,8 @@
 #include "AudioEngine.h"
 
+#include <array>
+#include <cmath>
+
 namespace
 {
     constexpr auto twoPi = juce::MathConstants<double>::twoPi;
@@ -29,11 +32,38 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
 
     testTonePhase = 0.0;
 
+    const auto rateChanged = ! enginePrepared
+                          || std::abs (sampleRate - preparedSampleRate) > 0.5;
+
+    if (rateChanged)
+    {
+        transport.prepare (sampleRate);
+        metronome.prepare (sampleRate);
+
+        lastTransportState = Transport::State::Stopped;
+        nextBeatPosition = 0.0;
+        lastSamplesPerBeat = 0.0;
+
+        preparedSampleRate = sampleRate;
+        enginePrepared = true;
+    }
+    else
+    {
+        // A JACK port or buffer change can restart the device. Keep the transport
+        // running and only clear the click tail.
+        metronome.reset();
+    }
+
+    inputLatencySamples.store (device->getInputLatencyInSamples(), std::memory_order_relaxed);
+    outputLatencySamples.store (device->getOutputLatencyInSamples(), std::memory_order_relaxed);
+
     juce::Logger::writeToLog ("Audio device started: " + device->getName()
                               + " | " + juce::String (sampleRate, 1) + " Hz | "
                               + juce::String (device->getCurrentBufferSizeSamples()) + " samples | "
                               + juce::String (device->getActiveInputChannels().countNumberOfSetBits()) + " in / "
-                              + juce::String (device->getActiveOutputChannels().countNumberOfSetBits()) + " out");
+                              + juce::String (device->getActiveOutputChannels().countNumberOfSetBits()) + " out | "
+                              + "latency " + juce::String (device->getInputLatencyInSamples())
+                              + "+" + juce::String (device->getOutputLatencyInSamples()) + " samples");
 }
 
 void AudioEngine::audioDeviceStopped()
@@ -43,7 +73,10 @@ void AudioEngine::audioDeviceStopped()
     currentBlockSize.store (0);
     inputLevel.store (0.0f);
     outputLevel.store (0.0f);
+    inputLatencySamples.store (0, std::memory_order_relaxed);
+    outputLatencySamples.store (0, std::memory_order_relaxed);
     testTonePhase = 0.0;
+    metronome.reset();
 }
 
 void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputChannelData,
@@ -71,8 +104,65 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     outputGainSmoother.setTargetValue (outputGainLinear.load (std::memory_order_relaxed));
     monitorGainSmoother.setTargetValue (monitor ? 1.0f : 0.0f);
     testToneGainSmoother.setTargetValue (toneOn ? testToneLevel : 0.0f);
+    metronome.beginBlock();
 
     const auto phaseIncrement = twoPi * juce::jlimit (20.0, sampleRate * 0.45, toneFrequency) / sampleRate;
+
+    const auto transportState = transport.getState();
+    const auto transportPlaying = transportState == Transport::State::Playing;
+    const auto transportPosition = static_cast<double> (transport.getPositionSamples());
+    const auto samplesPerBeat = transport.getSamplesPerBeat();
+    const auto beatsPerBar = juce::jmax (1, transport.getTimeSignatureNumerator());
+
+    if (samplesPerBeat > 0.0
+        && std::abs (samplesPerBeat - lastSamplesPerBeat) > 1.0e-6)
+    {
+        lastSamplesPerBeat = samplesPerBeat;
+        nextBeatPosition = transportPlaying
+                             ? std::ceil (transportPosition / samplesPerBeat) * samplesPerBeat
+                             : transportPosition;
+    }
+
+    if (transportPlaying && lastTransportState != Transport::State::Playing
+        && samplesPerBeat > 0.0)
+    {
+        nextBeatPosition = transportPosition <= 0.0
+                             ? 0.0
+                             : std::ceil (transportPosition / samplesPerBeat) * samplesPerBeat;
+    }
+    else if (! transportPlaying)
+    {
+        nextBeatPosition = transportPosition;
+    }
+
+    lastTransportState = transportState;
+
+    constexpr int maxClicksPerBlock = 8;
+    std::array<int, maxClicksPerBlock> clickOffsets {};
+    std::array<bool, maxClicksPerBlock> clickAccents {};
+    int numClicks = 0;
+
+    if (transportPlaying && samplesPerBeat > 0.0)
+    {
+        if (nextBeatPosition < transportPosition - 0.5)
+            nextBeatPosition = std::ceil (transportPosition / samplesPerBeat) * samplesPerBeat;
+
+        const auto blockEnd = transportPosition + static_cast<double> (numSamples);
+
+        while (nextBeatPosition < blockEnd && numClicks < maxClicksPerBlock)
+        {
+            auto offset = static_cast<int> (std::llround (nextBeatPosition - transportPosition));
+            offset = juce::jlimit (0, numSamples - 1, offset);
+
+            const auto beatIndex = static_cast<juce::int64> (std::llround (nextBeatPosition / samplesPerBeat));
+            const auto clickIndex = static_cast<std::size_t> (numClicks);
+            clickOffsets[clickIndex] = offset;
+            clickAccents[clickIndex] = (beatIndex % beatsPerBar == 0);
+            ++numClicks;
+
+            nextBeatPosition += samplesPerBeat;
+        }
+    }
 
     float inputPeak = 0.0f;
     float outputPeak = 0.0f;
@@ -84,8 +174,17 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     auto* outputL = numOutputChannels > 0 ? outputChannelData[0] : nullptr;
     auto* outputR = numOutputChannels > 1 ? outputChannelData[1] : nullptr;
 
+    int nextClickIndex = 0;
+
     for (int i = 0; i < numSamples; ++i)
     {
+        while (nextClickIndex < numClicks
+               && clickOffsets[static_cast<std::size_t> (nextClickIndex)] == i)
+        {
+            metronome.trigger (clickAccents[static_cast<std::size_t> (nextClickIndex)]);
+            ++nextClickIndex;
+        }
+
         const auto inL = inputL != nullptr ? inputL[i] : 0.0f;
         const auto inR = inputR != nullptr ? inputR[i] : inL;
 
@@ -110,6 +209,10 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
                 testTonePhase -= twoPi;
         }
 
+        const auto clickSample = metronome.getNextSample();
+        mixL += clickSample;
+        mixR += clickSample;
+
         mixL *= outputGain;
         mixR *= outputGain;
 
@@ -128,6 +231,8 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     // Extra outputs stay silent; extra inputs are ignored in this phase.
     inputLevel.store (inputPeak, std::memory_order_relaxed);
     outputLevel.store (outputPeak, std::memory_order_relaxed);
+
+    transport.advance (numSamples);
 
     if (clipped)
         clipIndicator.store (true, std::memory_order_relaxed);
@@ -183,6 +288,27 @@ double AudioEngine::getCurrentSampleRate() const noexcept
 int AudioEngine::getCurrentBlockSize() const noexcept
 {
     return currentBlockSize.load (std::memory_order_relaxed);
+}
+
+int AudioEngine::getInputLatencySamples() const noexcept
+{
+    return inputLatencySamples.load (std::memory_order_relaxed);
+}
+
+int AudioEngine::getOutputLatencySamples() const noexcept
+{
+    return outputLatencySamples.load (std::memory_order_relaxed);
+}
+
+double AudioEngine::getRoundTripLatencyMs() const noexcept
+{
+    const auto rate = getCurrentSampleRate();
+
+    if (rate <= 0.0)
+        return 0.0;
+
+    const auto samples = getInputLatencySamples() + getOutputLatencySamples();
+    return static_cast<double> (samples) * 1000.0 / rate;
 }
 
 bool AudioEngine::hasClipped() const noexcept

@@ -3,6 +3,9 @@
 #include <JuceHeader.h>
 #include <atomic>
 
+#include "Metronome.h"
+#include "Transport.h"
+
 /**
     Phase 1 audio engine.
 
@@ -41,10 +44,31 @@ public:
     double getCurrentSampleRate() const noexcept;
     int getCurrentBlockSize() const noexcept;
 
+    int getInputLatencySamples() const noexcept;
+    int getOutputLatencySamples() const noexcept;
+    double getRoundTripLatencyMs() const noexcept;
+
+    Transport& getTransport() noexcept              { return transport; }
+    const Transport& getTransport() const noexcept  { return transport; }
+    Metronome& getMetronome() noexcept              { return metronome; }
+    const Metronome& getMetronome() const noexcept  { return metronome; }
+
     bool hasClipped() const noexcept;
     void resetClipIndicator() noexcept;
 
 private:
+    Transport transport;
+    Metronome metronome;
+
+    Transport::State lastTransportState = Transport::State::Stopped;
+    double nextBeatPosition = 0.0;
+    double lastSamplesPerBeat = 0.0;
+    double preparedSampleRate = 0.0;
+    bool enginePrepared = false;
+
+    std::atomic<int> inputLatencySamples { 0 };
+    std::atomic<int> outputLatencySamples { 0 };
+
     std::atomic<float> inputGainLinear { 1.0f };
     std::atomic<float> outputGainLinear { 1.0f };
     std::atomic<bool> monitoringEnabled { true };

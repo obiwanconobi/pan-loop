@@ -12,7 +12,7 @@ The full design is in [PLAN.md](PLAN.md).
 
 ## Project status
 
-**Phase 1 complete: audio + MIDI skeleton**
+**Phase 2 complete: transport and metronome foundation**
 
 Implemented so far:
 
@@ -28,8 +28,15 @@ Implemented so far:
 - Automatic selection of a device whose name contains “Live Logic”
 - Dark, stage-oriented UI with Live, Audio, MIDI and Session tabs
 - File logging and per-user config paths
+- **Sample-accurate transport clock** with BPM, time signature, bar/beat position, play/pause and stop/rewind
+- **Tap tempo** and BPM controls
+- **Metronome** with beat/bar accents, enable toggle and level control
+- **Live transport panel** with large play/pause and stop controls, beat indicator and bar progress
+- **Round-trip latency readout**
+- Transport state is preserved across JACK port connection changes (the JUCE JACK backend restarts the audio device when ports change)
+- Metronome audio verified at 120 BPM: 0.5 s click intervals with accents every four beats
 
-The loop engine, playlist playback, session persistence and MIDI learn are the next phases.
+The backing playlist, loop engine, session persistence and MIDI learn are the next phases.
 
 ## Requirements
 
@@ -104,7 +111,7 @@ JUCE’s JACK backend auto-connects whole devices and does not expose full per-p
 - Connect the Live Logic over USB.
 - Open the **MIDI** tab and select the device, or press **Rescan**.
 - If a device whose name contains “Live Logic” is present at startup, it is selected automatically.
-- Phase 1 only monitors incoming **CC**, **Note On/Off** and **Program Change** messages. MIDI Learn and transport actions arrive in Phase 5.
+- The MIDI page currently only monitors incoming **CC**, **Note On/Off** and **Program Change** messages. MIDI Learn and transport actions arrive in Phase 5.
 - MIDI clock and active sensing are ignored so they do not flood the monitor.
 - MIDI input uses ALSA (through JUCE), not JACK MIDI, in this phase.
 
@@ -121,8 +128,8 @@ The Session tab shows these paths and can copy a diagnostics block to the clipbo
 ```text
 src/
   Main.cpp                     JUCE application entry point
-  app/                         main window, look and feel, tabs
-  audio/                       audio engine, device setup, audio settings UI
+  app/                         main window, live transport panel, look and feel, tabs
+  audio/                       audio engine, transport, metronome, device setup, settings UI
   core/                        config paths and logging
   midi/                        MIDI device management and monitor UI
   ui/                          shared widgets (level meter)
@@ -130,10 +137,20 @@ PLAN.md                        full product and implementation plan
 CMakeLists.txt                 build definition
 ```
 
+## Development smoke test
+
+Debug builds support a development-only hook that starts the transport and metronome two seconds after launch, after the initial JACK port connections have settled:
+
+```bash
+PANLOOP_DEMO=1 ./build/pan-loop_artefacts/Debug/Pan\ Loop
+```
+
+This is useful for checking the transport clock, metronome audio and UI without touching the mouse. It is compiled out of release builds.
+
 ## Roadmap
 
-1. **Phase 1 — skeleton**: build, JACK I/O, MIDI enumeration, basic monitoring. *(current)*
-2. **Phase 2 — audio engine**: transport clock, metronome, latency reporting, mixing foundation.
+1. **Phase 1 — skeleton**: build, JACK I/O, MIDI enumeration, basic monitoring. *(complete)*
+2. **Phase 2 — transport and metronome**: transport clock, BPM/time signature, metronome, latency readout, Live transport panel. *(complete)*
 3. **Phase 3 — backing playlist**: file decoding/resampling, ordered playlist, gapless looping.
 4. **Phase 4 — live looper**: first-loop capture, bar snap, overdub auto-stop, Stop/Discard state machine, latency compensation.
 5. **Phase 5 — MIDI control**: MIDI Learn, action mappings, persistence, Blackstar quick start.

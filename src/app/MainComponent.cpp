@@ -1,6 +1,7 @@
 #include "MainComponent.h"
 
 #include "app/DarkLookAndFeel.h"
+#include "app/LivePanel.h"
 #include "audio/AudioSettingsPanel.h"
 #include "audio/AudioSetup.h"
 #include "core/AppConfig.h"
@@ -9,92 +10,13 @@
 
 namespace
 {
-    class LivePlaceholder final : public juce::Component
-    {
-    public:
-        LivePlaceholder()
-        {
-            setOpaque (true);
-        }
-
-        void paint (juce::Graphics& g) override
-        {
-            g.fillAll (DarkLookAndFeel::background());
-
-            auto area = getLocalBounds().reduced (40);
-
-            g.setColour (DarkLookAndFeel::text());
-            g.setFont (juce::Font (juce::FontOptions (34.0f, juce::Font::bold)));
-            g.drawText ("Live loop", area.removeFromTop (46),
-                        juce::Justification::centredLeft, false);
-
-            g.setColour (DarkLookAndFeel::mutedText());
-            g.setFont (juce::Font (juce::FontOptions (15.0f)));
-            g.drawText ("Audio and MIDI are wired up. The loop engine arrives in phase 4.",
-                        area.removeFromTop (28), juce::Justification::centredLeft, false);
-
-            area.removeFromTop (28);
-
-            auto buttons = area.removeFromTop (104);
-            const auto buttonWidth = buttons.getWidth() / 3;
-
-            drawButton (g, buttons.removeFromLeft (buttonWidth).reduced (8),
-                        "RECORD", DarkLookAndFeel::recording());
-            drawButton (g, buttons.removeFromLeft (buttonWidth).reduced (8),
-                        "STOP REC", DarkLookAndFeel::armed());
-            drawButton (g, buttons.reduced (8),
-                        "DISCARD", DarkLookAndFeel::mutedText());
-
-            area.removeFromTop (30);
-
-            auto roadmap = area.removeFromTop (92);
-
-            g.setColour (DarkLookAndFeel::panel());
-            g.fillRoundedRectangle (roadmap.toFloat(), 8.0f);
-            g.setColour (DarkLookAndFeel::outline());
-            g.drawRoundedRectangle (roadmap.toFloat().reduced (0.5f), 8.0f, 1.0f);
-
-            auto info = roadmap.reduced (20, 14);
-            g.setColour (DarkLookAndFeel::text());
-            g.setFont (juce::Font (juce::FontOptions (16.0f, juce::Font::bold)));
-            g.drawText ("Phase 4: first-loop capture, overdub layers and the backing playlist",
-                        info.removeFromTop (24), juce::Justification::centredLeft, false);
-
-            g.setColour (DarkLookAndFeel::mutedText());
-            g.setFont (juce::Font (juce::FontOptions (13.0f)));
-            g.drawFittedText ("Record starts a new layer, Stop Rec finalizes it and arms the next channel, "
-                              "Discard removes the current take or the most recent layer. "
-                              "Footswitch MIDI learn arrives in Phase 5.",
-                              info, juce::Justification::topLeft, 3);
-        }
-
-    private:
-        static void drawButton (juce::Graphics& g,
-                                juce::Rectangle<int> bounds,
-                                const juce::String& text,
-                                juce::Colour colour)
-        {
-            const auto rect = bounds.toFloat();
-
-            g.setColour (DarkLookAndFeel::panel());
-            g.fillRoundedRectangle (rect, 10.0f);
-            g.setColour (colour.withAlpha (0.7f));
-            g.drawRoundedRectangle (rect.reduced (1.0f), 10.0f, 2.0f);
-
-            g.setColour (colour);
-            g.setFont (juce::Font (juce::FontOptions (22.0f, juce::Font::bold)));
-            g.drawText (text, bounds, juce::Justification::centred, false);
-
-            g.setColour (colour.withAlpha (0.25f));
-            g.fillEllipse (rect.getX() + 16.0f, rect.getCentreY() - 5.0f, 10.0f, 10.0f);
-        }
-    };
-
     class SessionInfoPanel final : public juce::Component
     {
     public:
-        SessionInfoPanel (juce::AudioDeviceManager& manager, MidiManager& midiManager)
-            : deviceManager (manager), midi (midiManager)
+        SessionInfoPanel (juce::AudioDeviceManager& manager,
+                          MidiManager& midiManager,
+                          AudioEngine& audioEngine)
+            : deviceManager (manager), midi (midiManager), engine (audioEngine)
         {
             setOpaque (true);
 
@@ -140,7 +62,7 @@ namespace
 
             title.setBounds (area.removeFromTop (38));
             area.removeFromTop (12);
-            info.setBounds (area.removeFromTop (150));
+            info.setBounds (area.removeFromTop (180));
 
             area.removeFromTop (16);
             auto row = area.removeFromTop (32);
@@ -154,9 +76,17 @@ namespace
     private:
         void refreshInfo()
         {
+            const auto infoState = engine.getTransport().getPositionInfo();
+
             juce::String text;
             text << "Application: Pan Loop " << ProjectInfo::versionString << "\n"
-                 << "Phase: 1 - skeleton, audio I/O, MIDI monitoring\n"
+                 << "Phase: 2 - transport, metronome and latency readout\n"
+                 << "Transport: " << transportStateName (infoState.state)
+                 << " | bar " << infoState.bar << "." << infoState.beat
+                 << " | " << juce::String (infoState.bpm, 1) << " BPM"
+                 << " | " << infoState.beatsPerBar << "/" << infoState.beatUnit << "\n"
+                 << "Metronome: " << (engine.getMetronome().isEnabled() ? "on" : "off")
+                 << " | level " << juce::String (engine.getMetronome().getLevel() * 100.0f, 0) << " %\n"
                  << "Config directory: " << AppConfig::getConfigDirectory().getFullPathName() << "\n"
                  << "Log file: " << AppConfig::getLogFile().getFullPathName() << "\n"
                  << "Build: " << AppConfig::getBuildInfo();
@@ -196,11 +126,32 @@ namespace
 
             const auto enabled = midi.getEnabledDeviceIdentifier();
             text << "MIDI enabled: " << (enabled.isNotEmpty() ? enabled : "(none)") << "\n";
+
+            const auto transportInfo = engine.getTransport().getPositionInfo();
+            text << "Transport: " << transportStateName (transportInfo.state)
+                 << " | bar " << transportInfo.bar << "." << transportInfo.beat
+                 << " | " << juce::String (transportInfo.bpm, 1) << " BPM"
+                 << " | " << transportInfo.beatsPerBar << "/" << transportInfo.beatUnit << "\n"
+                 << "Round-trip latency: " << juce::String (engine.getRoundTripLatencyMs(), 1) << " ms\n";
+
             return text;
+        }
+
+        static const char* transportStateName (Transport::State state)
+        {
+            switch (state)
+            {
+                case Transport::State::Stopped: return "stopped";
+                case Transport::State::Playing: return "playing";
+                case Transport::State::Paused:  return "paused";
+            }
+
+            return "stopped";
         }
 
         juce::AudioDeviceManager& deviceManager;
         MidiManager& midi;
+        AudioEngine& engine;
 
         juce::Label title;
         juce::Label info;
@@ -223,7 +174,7 @@ MainComponent::MainComponent()
     subtitleLabel.setFont (juce::Font (juce::FontOptions (13.0f)));
     subtitleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    phaseLabel.setText ("PHASE 1  |  AUDIO + MIDI SKELETON", juce::dontSendNotification);
+    phaseLabel.setText ("PHASE 2  |  TRANSPORT + METRONOME", juce::dontSendNotification);
     phaseLabel.setFont (juce::Font (juce::FontOptions (13.0f, juce::Font::bold)));
     phaseLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::accent());
     phaseLabel.setJustificationType (juce::Justification::centredRight);
@@ -242,17 +193,35 @@ MainComponent::MainComponent()
 
     tabs.setTabBarDepth (40);
     tabs.setColour (juce::TabbedComponent::backgroundColourId, DarkLookAndFeel::background());
-    tabs.addTab ("Live", DarkLookAndFeel::panel(), new LivePlaceholder(), true);
+    tabs.addTab ("Live", DarkLookAndFeel::panel(), new LivePanel (audioEngine), true);
     tabs.addTab ("Audio", DarkLookAndFeel::panel(),
                  new AudioSettingsPanel (deviceManager, audioEngine), true);
     tabs.addTab ("MIDI", DarkLookAndFeel::panel(), new MidiPanel (*midiManager), true);
     tabs.addTab ("Session", DarkLookAndFeel::panel(),
-                 new SessionInfoPanel (deviceManager, *midiManager), true);
+                 new SessionInfoPanel (deviceManager, *midiManager, audioEngine), true);
     tabs.setCurrentTabIndex (0);
 
     addAndMakeVisible (tabs);
 
     setSize (1180, 820);
+
+   #if JUCE_DEBUG
+    // Development smoke-test hook: start the transport and metronome after the
+    // initial JACK port connections have settled.
+    if (juce::SystemStats::getEnvironmentVariable ("PANLOOP_DEMO", {}) == "1")
+    {
+        juce::Component::SafePointer<MainComponent> safeThis (this);
+
+        juce::Timer::callAfterDelay (2000, [safeThis]
+        {
+            if (safeThis == nullptr)
+                return;
+
+            safeThis->audioEngine.getMetronome().setEnabled (true);
+            safeThis->audioEngine.getTransport().play();
+        });
+    }
+   #endif
 }
 
 MainComponent::~MainComponent()
