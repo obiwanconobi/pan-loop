@@ -48,6 +48,7 @@ public:
 
     float getInputLevel() const noexcept;
     float getOutputLevel() const noexcept;
+    float getOutputGainLinear() const noexcept;
     double getCurrentSampleRate() const noexcept;
     int getCurrentBlockSize() const noexcept;
 

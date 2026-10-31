@@ -37,6 +37,13 @@ bool AudioFileLoader::isBusy() const noexcept
     return busy.load (std::memory_order_relaxed);
 }
 
+std::shared_ptr<PlaylistItem> AudioFileLoader::loadFileSynchronously (const juce::File& file,
+                                                                     double targetSampleRate,
+                                                                     juce::String& error)
+{
+    return loadFile (file, targetSampleRate, error);
+}
+
 void AudioFileLoader::run()
 {
     int loaded = 0;

@@ -22,6 +22,11 @@ public:
     void enqueueFiles (const juce::Array<juce::File>& files, double targetSampleRate);
     bool isBusy() const noexcept;
 
+    /** Synchronous decoder used by session loading. */
+    static std::shared_ptr<PlaylistItem> loadFileSynchronously (const juce::File& file,
+                                                               double targetSampleRate,
+                                                               juce::String& error);
+
     std::function<void(int index, int total, const juce::String& fileName)> onFileStarted;
     std::function<void(int index, int total, std::shared_ptr<PlaylistItem> item)> onFileLoaded;
     std::function<void(int index, int total, const juce::String& error)> onFileFailed;

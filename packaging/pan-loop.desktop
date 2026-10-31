@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Pan Loop
+GenericName=Live Looper
+Comment=Live looping with JACK audio, backing tracks and MIDI foot control
+Exec=pan-loop
+Icon=pan-loop
+Terminal=false
+Categories=AudioVideo;Audio;Midi;
+Keywords=looper;loop;JACK;MIDI;backing;live;
+StartupNotify=true
+StartupWMClass=pan-loop

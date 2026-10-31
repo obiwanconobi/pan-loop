@@ -313,6 +313,27 @@ std::optional<MidiMapping> MidiManager::getMapping (MidiAction action) const
     return {};
 }
 
+std::vector<MidiMapping> MidiManager::getMappingsForSession() const
+{
+    const juce::ScopedLock sl (mappingLock);
+    return mappings;
+}
+
+void MidiManager::restoreMappingsForSession (const std::vector<MidiMapping>& newMappings)
+{
+    cancelLearning();
+
+    {
+        const juce::ScopedLock sl (mappingLock);
+        mappings = newMappings;
+    }
+
+    mappingDirty.store (false, std::memory_order_relaxed);
+    saveMappings();
+    juce::Logger::writeToLog ("Restored " + juce::String (static_cast<int> (newMappings.size()))
+                              + " MIDI mappings from session");
+}
+
 void MidiManager::clearMapping (MidiAction action)
 {
     bool changed = false;

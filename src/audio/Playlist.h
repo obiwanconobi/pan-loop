@@ -42,6 +42,7 @@ public:
     struct ItemInfo
     {
         juce::String name;
+        juce::File sourceFile;
         double durationSeconds = 0.0;
         float gain = 1.0f;
         int memoryUsageBytes = 0;

@@ -32,6 +32,10 @@ public:
     std::optional<MidiMapping> getMapping (MidiAction action) const;
     void clearMapping (MidiAction action);
 
+    /** Session save/load helpers. Restored mappings are also persisted globally. */
+    std::vector<MidiMapping> getMappingsForSession() const;
+    void restoreMappingsForSession (const std::vector<MidiMapping>& newMappings);
+
     /** Called on the message thread when a mapped control is pressed. */
     std::function<void(MidiAction)> onAction;
 

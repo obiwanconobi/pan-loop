@@ -3,12 +3,14 @@
 #include "app/DarkLookAndFeel.h"
 #include "app/LayersPanel.h"
 #include "app/LivePanel.h"
+#include "app/PerformancePanel.h"
 #include "app/PlaylistPanel.h"
 #include "audio/AudioSettingsPanel.h"
 #include "audio/AudioSetup.h"
 #include "core/AppConfig.h"
 #include "midi/MidiManager.h"
 #include "midi/MidiPanel.h"
+#include "session/SessionStore.h"
 
 namespace
 {
@@ -47,8 +49,23 @@ namespace
                 juce::SystemClipboard::copyTextToClipboard (buildDiagnostics());
             };
 
+            saveSessionButton.onClick = [this] { chooseSaveSession(); };
+            loadSessionButton.onClick = [this] { chooseLoadSession(); };
+            exportButton.onClick = [this] { chooseExportMixdown(); };
+            newSessionButton.onClick = [this] { newSession(); };
+
+            sessionStatusLabel.setFont (juce::Font (juce::FontOptions (12.0f)));
+            sessionStatusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+            sessionStatusLabel.setJustificationType (juce::Justification::centredLeft);
+            sessionStatusLabel.setText ("No session loaded.", juce::dontSendNotification);
+
             addAndMakeVisible (title);
             addAndMakeVisible (info);
+            addAndMakeVisible (sessionStatusLabel);
+            addAndMakeVisible (saveSessionButton);
+            addAndMakeVisible (loadSessionButton);
+            addAndMakeVisible (exportButton);
+            addAndMakeVisible (newSessionButton);
             addAndMakeVisible (openConfigButton);
             addAndMakeVisible (openLogButton);
             addAndMakeVisible (copyButton);
@@ -72,6 +89,20 @@ namespace
 
             title.setBounds (area.removeFromTop (38));
             area.removeFromTop (12);
+
+            auto sessionRow = area.removeFromTop (32);
+            saveSessionButton.setBounds (sessionRow.removeFromLeft (140));
+            sessionRow.removeFromLeft (8);
+            loadSessionButton.setBounds (sessionRow.removeFromLeft (140));
+            sessionRow.removeFromLeft (8);
+            exportButton.setBounds (sessionRow.removeFromLeft (160));
+            sessionRow.removeFromLeft (8);
+            newSessionButton.setBounds (sessionRow.removeFromLeft (120));
+
+            area.removeFromTop (8);
+            sessionStatusLabel.setBounds (area.removeFromTop (24));
+            area.removeFromTop (12);
+
             info.setBounds (area.removeFromTop (180));
 
             area.removeFromTop (16);
@@ -84,6 +115,156 @@ namespace
         }
 
     private:
+        void chooseSaveSession()
+        {
+            if (engine.getLiveLooper().isRecordingOrArmed())
+            {
+                setSessionStatus ("Stop recording before saving a session.", true);
+                return;
+            }
+
+            const auto defaultFile = currentSessionFile.existsAsFile()
+                                       ? currentSessionFile
+                                       : AppConfig::getSessionsDirectory().getChildFile ("Untitled.panloop");
+
+            fileChooser = std::make_unique<juce::FileChooser> ("Save session",
+                                                               defaultFile,
+                                                               "*.panloop");
+
+            juce::Component::SafePointer<SessionInfoPanel> safeThis (this);
+
+            const auto browserFlags = juce::FileBrowserComponent::saveMode
+                                    | juce::FileBrowserComponent::canSelectFiles
+                                    | juce::FileBrowserComponent::warnAboutOverwriting;
+
+            fileChooser->launchAsync (browserFlags, [safeThis] (const juce::FileChooser& chooser)
+            {
+                if (safeThis == nullptr)
+                    return;
+
+                auto file = chooser.getResult();
+
+                if (file == juce::File())
+                    return;
+
+                if (! file.hasFileExtension ("panloop"))
+                    file = file.withFileExtension ("panloop");
+
+                const auto error = SessionStore::save (file, safeThis->engine,
+                                                      safeThis->midi.getMappingsForSession());
+
+                if (error.isNotEmpty())
+                {
+                    safeThis->setSessionStatus (error, true);
+                }
+                else
+                {
+                    safeThis->currentSessionFile = file;
+                    safeThis->setSessionStatus ("Saved: " + file.getFullPathName(), false);
+                    safeThis->refreshInfo();
+                }
+            });
+        }
+
+        void chooseLoadSession()
+        {
+            const auto defaultFile = currentSessionFile.existsAsFile()
+                                       ? currentSessionFile
+                                       : AppConfig::getSessionsDirectory().getChildFile ("Untitled.panloop");
+
+            fileChooser = std::make_unique<juce::FileChooser> ("Load session",
+                                                               defaultFile,
+                                                               "*.panloop");
+
+            juce::Component::SafePointer<SessionInfoPanel> safeThis (this);
+
+            fileChooser->launchAsync (juce::FileBrowserComponent::openMode
+                                        | juce::FileBrowserComponent::canSelectFiles,
+                                      [safeThis] (const juce::FileChooser& chooser)
+            {
+                if (safeThis == nullptr)
+                    return;
+
+                const auto file = chooser.getResult();
+
+                if (file == juce::File())
+                    return;
+
+                std::vector<MidiMapping> mappings;
+                const auto error = SessionStore::load (file, safeThis->engine, &mappings);
+
+                if (error.isNotEmpty())
+                {
+                    safeThis->setSessionStatus (error, true);
+                }
+                else
+                {
+                    safeThis->midi.restoreMappingsForSession (mappings);
+                    safeThis->currentSessionFile = file;
+                    safeThis->setSessionStatus ("Loaded: " + file.getFullPathName(), false);
+                    safeThis->refreshInfo();
+                }
+            });
+        }
+
+        void chooseExportMixdown()
+        {
+            auto defaultFile = AppConfig::getSessionsDirectory().getChildFile ("Mixdown.wav");
+
+            if (currentSessionFile.existsAsFile())
+                defaultFile = currentSessionFile.getSiblingFile ("Mixdown.wav");
+
+            fileChooser = std::make_unique<juce::FileChooser> ("Export mixdown",
+                                                               defaultFile,
+                                                               "*.wav");
+
+            juce::Component::SafePointer<SessionInfoPanel> safeThis (this);
+
+            const auto browserFlags = juce::FileBrowserComponent::saveMode
+                                    | juce::FileBrowserComponent::canSelectFiles
+                                    | juce::FileBrowserComponent::warnAboutOverwriting;
+
+            fileChooser->launchAsync (browserFlags, [safeThis] (const juce::FileChooser& chooser)
+            {
+                if (safeThis == nullptr)
+                    return;
+
+                auto file = chooser.getResult();
+
+                if (file == juce::File())
+                    return;
+
+                if (! file.hasFileExtension ("wav"))
+                    file = file.withFileExtension ("wav");
+
+                const auto error = SessionStore::exportMixdown (file, safeThis->engine);
+
+                if (error.isNotEmpty())
+                    safeThis->setSessionStatus (error, true);
+                else
+                    safeThis->setSessionStatus ("Exported mixdown: " + file.getFullPathName(), false);
+            });
+        }
+
+        void newSession()
+        {
+            engine.getTransport().stop();
+            engine.clearLiveLayers();
+            engine.getPlaylist().clear();
+            engine.playlistChanged();
+            currentSessionFile = juce::File();
+            setSessionStatus ("New empty session.", false);
+            refreshInfo();
+        }
+
+        void setSessionStatus (const juce::String& text, bool isError)
+        {
+            sessionStatusLabel.setColour (juce::Label::textColourId,
+                                          isError ? DarkLookAndFeel::recording()
+                                                  : DarkLookAndFeel::mutedText());
+            sessionStatusLabel.setText (text, juce::dontSendNotification);
+        }
+
         void refreshInfo()
         {
             const auto infoState = engine.getTransport().getPositionInfo();
@@ -92,7 +273,10 @@ namespace
 
             juce::String text;
             text << "Application: Pan Loop " << ProjectInfo::versionString << "\n"
-                 << "Phase: 5 - MIDI control, live looper, backing playlist and transport\n"
+                 << "Phase: 6 - session persistence, export and packaging\n"
+                 << "Session file: " << (currentSessionFile.existsAsFile()
+                                            ? currentSessionFile.getFullPathName()
+                                            : "(unsaved)") << "\n"
                  << "Transport: " << transportStateName (infoState.state)
                  << " | bar " << infoState.bar << "." << infoState.beat
                  << " | " << juce::String (infoState.bpm, 1) << " BPM"
@@ -192,9 +376,17 @@ namespace
 
         juce::Label title;
         juce::Label info;
+        juce::Label sessionStatusLabel;
+        juce::TextButton saveSessionButton { "Save Session..." };
+        juce::TextButton loadSessionButton { "Load Session..." };
+        juce::TextButton exportButton { "Export Mixdown..." };
+        juce::TextButton newSessionButton { "New Session" };
         juce::TextButton openConfigButton { "Open config folder" };
         juce::TextButton openLogButton { "Open log file" };
         juce::TextButton copyButton { "Copy diagnostics" };
+
+        juce::File currentSessionFile;
+        std::unique_ptr<juce::FileChooser> fileChooser;
     };
 }
 
@@ -211,14 +403,20 @@ MainComponent::MainComponent()
     subtitleLabel.setFont (juce::Font (juce::FontOptions (13.0f)));
     subtitleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    phaseLabel.setText ("PHASE 5  |  MIDI CONTROL", juce::dontSendNotification);
+    phaseLabel.setText ("PHASE 6  |  SESSION & PACKAGING", juce::dontSendNotification);
     phaseLabel.setFont (juce::Font (juce::FontOptions (13.0f, juce::Font::bold)));
     phaseLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::accent());
     phaseLabel.setJustificationType (juce::Justification::centredRight);
 
+    performanceButton.setTooltip ("Open the large stage view (F11)");
+    performanceButton.setColour (juce::TextButton::buttonColourId, DarkLookAndFeel::accent().withAlpha (0.2f));
+    performanceButton.setColour (juce::TextButton::textColourOffId, DarkLookAndFeel::text());
+    performanceButton.onClick = [this] { setPerformanceMode (! performanceMode); };
+
     addAndMakeVisible (titleLabel);
     addAndMakeVisible (subtitleLabel);
     addAndMakeVisible (phaseLabel);
+    addAndMakeVisible (performanceButton);
 
     const auto audioError = AudioSetup::initialise (deviceManager);
     if (audioError.isNotEmpty())
@@ -252,8 +450,15 @@ MainComponent::MainComponent()
                  new SessionInfoPanel (deviceManager, *midiManager, audioEngine), true);
     tabs.setCurrentTabIndex (0);
 
-    addAndMakeVisible (tabs);
+    performancePanel = std::make_unique<PerformancePanel> (audioEngine);
+    performancePanel->setVisible (false);
+    performancePanel->onExitRequested = [this] { setPerformanceMode (false); };
+    performancePanel->onToggleFullScreen = [this] { toggleFullScreen(); };
 
+    addAndMakeVisible (tabs);
+    addChildComponent (*performancePanel);
+
+    setWantsKeyboardFocus (true);
     setSize (1180, 820);
 
    #if JUCE_DEBUG
@@ -263,6 +468,17 @@ MainComponent::MainComponent()
     {
         const auto tabText = juce::SystemStats::getEnvironmentVariable ("PANLOOP_SCREENSHOT_TAB", "0");
         const auto tabIndex = tabText.getIntValue();
+
+        if (juce::SystemStats::getEnvironmentVariable ("PANLOOP_SCREENSHOT_PERFORMANCE", "0") == "1")
+        {
+            juce::Component::SafePointer<MainComponent> safeThis (this);
+
+            juce::Timer::callAfterDelay (500, [safeThis]
+            {
+                if (safeThis != nullptr)
+                    safeThis->setPerformanceMode (true);
+            });
+        }
 
         if (tabIndex >= 0 && tabIndex < tabs.getNumTabs())
             tabs.setCurrentTabIndex (tabIndex);
@@ -494,9 +710,64 @@ void MainComponent::handleMidiAction (MidiAction action)
     }
 }
 
+void MainComponent::setPerformanceMode (bool shouldBeEnabled)
+{
+    if (performanceMode == shouldBeEnabled)
+        return;
+
+    performanceMode = shouldBeEnabled;
+
+    tabs.setVisible (! performanceMode);
+    performancePanel->setVisible (performanceMode);
+    titleLabel.setVisible (! performanceMode);
+    subtitleLabel.setVisible (! performanceMode);
+    phaseLabel.setVisible (! performanceMode);
+    performanceButton.setVisible (! performanceMode);
+
+    resized();
+
+    if (auto* window = findParentComponentOfClass<juce::DocumentWindow>())
+        window->setFullScreen (performanceMode);
+
+    if (performanceMode)
+        performancePanel->grabKeyboardFocus();
+    else
+        tabs.grabKeyboardFocus();
+}
+
+void MainComponent::toggleFullScreen()
+{
+    if (auto* window = findParentComponentOfClass<juce::DocumentWindow>())
+        window->setFullScreen (! window->isFullScreen());
+}
+
+bool MainComponent::keyPressed (const juce::KeyPress& key)
+{
+    if (key.getKeyCode() == juce::KeyPress::F11Key)
+    {
+        if (performanceMode)
+            toggleFullScreen();
+        else
+            setPerformanceMode (true);
+
+        return true;
+    }
+
+    if (performanceMode && key == juce::KeyPress::escapeKey)
+    {
+        setPerformanceMode (false);
+        return true;
+    }
+
+    return false;
+}
+
 void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (DarkLookAndFeel::background());
+
+    if (performanceMode)
+        return;
 
     g.setColour (DarkLookAndFeel::outline());
     g.fillRect (0, 78, getWidth(), 1);
@@ -509,10 +780,23 @@ void MainComponent::resized()
 {
     auto area = getLocalBounds();
 
+    if (performanceMode)
+    {
+        if (performancePanel != nullptr)
+            performancePanel->setBounds (area);
+
+        return;
+    }
+
+    if (performancePanel != nullptr)
+        performancePanel->setBounds (area);
+
     auto header = area.removeFromTop (79).reduced (24, 12);
-    auto titleArea = header.removeFromLeft (500);
+    auto titleArea = header.removeFromLeft (juce::jmin (500, juce::jmax (320, header.getWidth() - 570)));
     titleLabel.setBounds (titleArea.removeFromTop (34));
     subtitleLabel.setBounds (titleArea);
+    performanceButton.setBounds (header.removeFromRight (150));
+    header.removeFromRight (8);
     phaseLabel.setBounds (header.removeFromRight (400));
 
     tabs.setBounds (area.reduced (16, 14));

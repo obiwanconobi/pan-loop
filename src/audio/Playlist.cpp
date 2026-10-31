@@ -67,6 +67,7 @@ Playlist::Snapshot Playlist::getSnapshot() const
             continue;
 
         snapshot.items.push_back ({ item->name,
+                                     item->sourceFile,
                                      item->getDurationSeconds(),
                                      item->gain.load (std::memory_order_relaxed),
                                      item->getMemoryUsageBytes() });

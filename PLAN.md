@@ -10,7 +10,7 @@ A Linux-first standalone live looping app in **C++20 + JUCE**, with JACK audio I
 - [x] Phase 4 — live looper, first loop/bar snap, overdub auto-stop, Stop/Discard, latency compensation, layers and mix controls
 - [x] Phase 5 — MIDI learn, action mappings, persistence, Blackstar quick start
 - [x] Pre-Phase 6 enhancement — sample rate selector (editable on non-JACK backends; JACK server rate shown read-only)
-- [ ] Phase 6 — session persistence and polish
+- [x] Phase 6 — session persistence, performance view, AppImage packaging and tests
 
 ## 1. Core loop behavior
 
@@ -70,7 +70,8 @@ A Linux-first standalone live looping app in **C++20 + JUCE**, with JACK audio I
 - Background decoding and high-quality offline resampling to the JACK sample rate.
 - Mono files become dual mono; more than 2 channels downmixed to stereo.
 - **V1 preloads the playlist into RAM** for gapless, glitch-free looping, with a memory estimate in the UI. Long playlists may need disk streaming later.
-- Session bundle saves `session.json` plus recorded layers as WAV files.
+- Session files are a single `.panloop` JSON document plus a `<name>.layers/` sidecar directory containing each recorded layer as a stereo 32-bit float WAV.
+- Mixdown export renders exactly one master cycle to a stereo 32-bit float WAV, including the audible backing/layer mix and output gain.
 
 ## 3. User interface
 
@@ -117,7 +118,7 @@ JUCE’s JACK backend creates a `pan-loop` client with stereo `in_1/2` and `out_
 3. [x] **Backing playlist**: file decoding/resampling, playlist UI, sequence playback, gapless loop, per-file gain, memory display. *(complete)*
 4. [x] **Live looper**: first-loop capture and bar snap, overdub auto-stop, layer mixer, Stop/Discard state machine, latency compensation, layers and mix controls, trimmed first-loop buffers. *(complete)*
 5. [x] **MIDI control**: learn UI, mappings for CC/Note/Program Change, action dispatch, persistence, Blackstar quick-start. *(complete)*
-6. [ ] **Session and polish**: save/load, layer WAVs, mixdown export, performance view, error handling, AppImage packaging, tests.
+6. [x] **Session and polish**: save/load, layer WAVs, mixdown export, performance view, error handling, AppImage packaging, tests. *(complete)*
 
 ## 7. Acceptance criteria
 

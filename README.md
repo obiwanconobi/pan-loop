@@ -12,7 +12,7 @@ The full design is in [PLAN.md](PLAN.md).
 
 ## Project status
 
-**Phase 5 complete: MIDI control**
+**Phase 6 complete: sessions, performance view and packaging**
 
 Implemented so far:
 
@@ -61,8 +61,13 @@ Implemented so far:
 - MIDI Learn and action dispatch verified with injected CC, Note and Program Change messages, including mapping persistence across restarts
 - **Sample rate selection** in the Audio tab for non-JACK backends
 - JACK's server-owned sample rate is displayed read-only with a clear hint
-
-Session persistence and polish are the next phase.
+- **Session save/load** (`.panloop` JSON plus a `<name>.layers/` sidecar directory of 32-bit float WAV layer files)
+- Sessions restore the backing playlist, live layers, layer gain/mute/solo, cycle length, BPM/time signature, bar snap, metronome, input monitoring, backing mute, record offset and MIDI mappings
+- Session loading rejects a sample-rate mismatch instead of silently resampling live layers
+- **Mixdown export** to a stereo 32-bit float WAV file covering exactly one master cycle, including the audible backing/layer mix and output gain
+- **Performance view** with oversized Record, Stop Rec, Discard and Play/Pause controls, cycle progress, backing/layer status and large input/output meters; toggle with the header button or `F11`, exit with `Esc`
+- **AppImage packaging** via `scripts/build-appimage.sh`, plus desktop entry and scalable application icon
+- **Automated tests** for transport, playlist playback, live-layer save/restore and offline mixing, MIDI mapping helpers, session round-trips, sample-rate mismatch handling and mixdown export (`ctest`)
 
 ### Backing playlist notes
 
@@ -81,6 +86,59 @@ Session persistence and polish are the next phase.
 - Changing the JACK sample rate clears both the preloaded playlist and live layers.
 - The Audio tab's **Record offset** slider adjusts latency compensation in milliseconds. Adjust it if recorded layers feel early or late relative to the click/backing. The default uses the reported JACK input + output latency.
 - The first loop, overdub and discard paths were verified through JACK loopback; layers can be inspected, muted, soloed and deleted in the Layers tab.
+
+### Sessions
+
+Open the **Session** tab to save, load, export or start a new session.
+
+- A session is a single `.panloop` JSON file. Recorded live layers are stored next to it in `<session-name>.layers/` as 32-bit float stereo WAV files.
+- Saving keeps the current playlist file paths, per-file gains, BPM, time signature, bar-snap setting, metronome state, monitoring/backing-mute state, record offset and MIDI mappings.
+- Loading requires the audio device to be running at the same sample rate as the session. If the rates differ, the load is rejected with a clear message; change the JACK server/PipeWire rate first.
+- **Export Mixdown** renders exactly one master cycle to a 32-bit float WAV file. It uses the current audible mix: backing (unless backing mute is on), all non-muted live layers with solo rules applied, and the output gain. Metronome and test tone are not included.
+- Loading a session stops the transport first. Missing backing files, missing layer files and malformed sessions produce an error without partially replacing the current playlist or layers.
+
+### Performance view
+
+Press **F11** or click **Performance** in the header to enter the stage view. It provides:
+
+- Large **Record**, **Stop Rec**, **Discard** and **Play/Pause** buttons
+- Big transport state and position readouts
+- Cycle progress bar with bar markers
+- Backing-track and live-layer status
+- Vertical input/output meters
+- Backing mute, clear layers, metronome and full-screen controls
+
+Keyboard shortcuts in the performance view: `Space` play/pause, `R` record, `T` stop recording, `D` discard, `B` backing mute, `C` clear layers, `F11` toggle full screen and `Esc` exit.
+
+### AppImage packaging
+
+```bash
+./scripts/build-appimage.sh
+```
+
+The script builds a Release binary, creates an AppDir with the desktop file and icon, collects runtime libraries with `linuxdeploy`, and writes:
+
+```text
+dist/Pan-Loop-<version>-x86_64.AppImage
+```
+
+`linuxdeploy` and `appimagetool` are downloaded on demand into `.cache/appimage-tools/`. Set `PANLOOP_SKIP_BUILD=1` to package an existing `build-release` tree, or override `BUILD_DIR`, `DIST_DIR`, `TOOLS_DIR` and `APPDIR` with environment variables. `rsvg-convert` or ImageMagick is used to render the icon.
+
+The same files can be installed system-wide without AppImage:
+
+```bash
+cmake --install build-release --prefix /usr/local
+```
+
+### Tests
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j"$(nproc)"
+ctest --test-dir build --output-on-failure
+```
+
+The test target is built by default. Disable it with `-DPANLOOP_BUILD_TESTS=OFF`. Tests cover transport timing/cycle wrap, playlist ordering/gain/wrap behavior, live-layer offline mixing and save/restore, MIDI mapping helpers, and a full session save/load/export round-trip including sample-rate mismatch and error paths.
 
 ## Requirements
 
@@ -102,6 +160,8 @@ For PipeWire’s JACK compatibility, install `pipewire-jack` (often already pres
 
 JUCE is downloaded by CMake via `FetchContent`; no system JUCE package is required.
 
+For AppImage packaging, `wget` and either `rsvg-convert` (`librsvg2-bin`) or ImageMagick are also needed. The AppImage helper tools are downloaded by the packaging script.
+
 ## Build
 
 ```bash
@@ -119,13 +179,13 @@ cmake --build build -j"$(nproc)"
 ### Run
 
 ```bash
-./build/pan-loop_artefacts/Release/Pan\ Loop
+./build/pan-loop_artefacts/Release/pan-loop
 ```
 
 or, for the debug build:
 
 ```bash
-./build/pan-loop_artefacts/Debug/Pan\ Loop
+./build/pan-loop_artefacts/Debug/pan-loop
 ```
 
 ## JACK setup
@@ -151,7 +211,7 @@ If JACK is not running, the Audio tab lets you select another backend (ALSA / Pu
 - **JACK owns the sample rate.** The Audio tab shows the current JACK server rate and explains that it must be changed in the JACK server/PipeWire configuration (for example with `qjackctl` or PipeWire metadata).
 - For **ALSA / PulseAudio** fallback backends, the Audio tab exposes a sample rate selector. Choose a rate and press **Apply**.
 - If the JACK server rate changes and the app reopens its audio device, the preloaded playlist and live layers are cleared because those buffers are tied to the previous rate. Restart the app or reselect the device after changing the JACK server rate.
-- Sample rate and device selection persistence across app restarts is planned for the session/settings work in Phase 6.
+- Session files record the sample rate and refuse to load at a different rate, so live layers stay sample-aligned. Audio device selection itself is not persisted yet; choose the JACK device again after restarting the app.
 
 ### JACK limitations
 
@@ -200,20 +260,24 @@ Each mapping stores the MIDI channel and number. For CC messages, values 64-127 
 - Config directory: `~/.config/pan-loop/`
 - Log file: `~/.config/pan-loop/pan-loop.log`
 - MIDI map: `~/.config/pan-loop/midi-map.txt`
-- Sessions directory: `~/.config/pan-loop/sessions/` (reserved for future sessions)
+- Sessions directory: `~/.config/pan-loop/sessions/` (default location for saved `.panloop` files)
 
-The Session tab shows these paths and can copy a diagnostics block to the clipboard.
+The Session tab shows these paths, saves/loads sessions, exports mixdowns and can copy a diagnostics block to the clipboard.
 
 ## Source layout
 
 ```text
 src/
   Main.cpp                     JUCE application entry point
-  app/                         main window, live transport, playlist and layer UI, look and feel, tabs
+  app/                         main window, live transport, performance view, playlist/layer UI, look and feel, tabs
   audio/                       audio engine, live looper, transport, metronome, playlist, file loader, device setup
   core/                        config paths and logging
   midi/                        MIDI device management, learn/mapping model and mapping UI
+  session/                     `.panloop` save/load and mixdown export
   ui/                          shared widgets (level meter)
+tests/                         unit and integration tests (CTest)
+packaging/                     desktop entry and application icon
+scripts/                       AppImage packaging script
 PLAN.md                        full product and implementation plan
 CMakeLists.txt                 build definition
 ```
@@ -224,12 +288,18 @@ Debug builds support development-only hooks:
 
 ```bash
 # Start the transport and metronome after two seconds.
-PANLOOP_DEMO=1 ./build/pan-loop_artefacts/Debug/Pan\ Loop
+PANLOOP_DEMO=1 ./build/pan-loop_artefacts/Debug/pan-loop
 
 # Load a playlist at startup and start it after JACK connections settle.
 PANLOOP_DEMO=1 \
 PANLOOP_TEST_PLAYLIST="/path/to/one.wav;/path/to/two.flac" \
-./build/pan-loop_artefacts/Debug/Pan\ Loop
+./build/pan-loop_artefacts/Debug/pan-loop
+
+# Capture the performance view offscreen without needing a mapped window.
+PANLOOP_SCREENSHOT=/tmp/pan-loop-performance.png \
+PANLOOP_SCREENSHOT_PERFORMANCE=1 \
+PANLOOP_SCREENSHOT_DELAY_MS=3500 \
+./build/pan-loop_artefacts/Debug/pan-loop
 ```
 
 `PANLOOP_DEMO` is useful for checking the transport clock, metronome audio and UI without touching the mouse. `PANLOOP_TEST_PLAYLIST` separates file paths with semicolons and loads them through the normal background loader. When a test playlist is present, the demo hook leaves the metronome off so recorded output contains only the backing files; set `PANLOOP_DEMO_METRONOME=1` to keep the click on while testing a playlist.
@@ -242,7 +312,7 @@ PANLOOP_TEST_LOOP_SNAP=1 \
 PANLOOP_SCREENSHOT=/tmp/pan-loop-layers.png \
 PANLOOP_SCREENSHOT_TAB=2 \
 PANLOOP_SCREENSHOT_DELAY_MS=11000 \
-./build/pan-loop_artefacts/Debug/Pan\ Loop
+./build/pan-loop_artefacts/Debug/pan-loop
 ```
 
 This records a first loop at 3 s, stops at 5 s, records an overdub at 6 s, stops at 8.5 s, then arms and discards another take. `PANLOOP_TEST_LOOP_SNAP=1` enables bar snap. `PANLOOP_TEST_LOOP_EXTRA=1` adds a finalized-layer discard at 11.5 s and a full layer clear at 13 s. The screenshot hook renders the UI offscreen to a PNG, which is useful in headless or window-manager-constrained environments.
@@ -254,11 +324,11 @@ MIDI smoke test:
 PANLOOP_TEST_MIDI_LEARN=record \
 PANLOOP_TEST_MIDI_INJECT="cc:20:127" \
 PANLOOP_TEST_MIDI_DEVICE="Midi Through" \
-./build/pan-loop_artefacts/Debug/Pan\ Loop
+./build/pan-loop_artefacts/Debug/pan-loop
 
 # Trigger Record -> Stop -> Discard using three simulated CC messages.
 PANLOOP_TEST_MIDI_INJECT="cc:20:127|cc:21:127|cc:22:127" \
-./build/pan-loop_artefacts/Debug/Pan\ Loop
+./build/pan-loop_artefacts/Debug/pan-loop
 ```
 
 `PANLOOP_TEST_MIDI_INJECT` separates messages with `|`; each token is `cc:number:value`, `note:number:velocity` or `pc:number:value`. `PANLOOP_TEST_MIDI_DEVICE` selects a device by name substring. These hooks use the same learn/dispatch path as hardware MIDI. All development hooks are compiled out of release builds.
@@ -270,7 +340,7 @@ PANLOOP_TEST_MIDI_INJECT="cc:20:127|cc:21:127|cc:22:127" \
 3. **Phase 3 — backing playlist**: file decoding/resampling, ordered playlist, gapless looping, per-file gain, memory display. *(complete)*
 4. **Phase 4 — live looper**: first-loop capture, bar snap, overdub auto-stop, Stop/Discard state machine, latency compensation, layers/mix controls, live-layer trimming. *(complete)*
 5. **Phase 5 — MIDI control**: MIDI Learn, action mappings, persistence, Blackstar quick start. *(complete)*
-6. **Phase 6 — session and polish**: save/load, layer WAVs, mixdown export, performance view, AppImage packaging, tests.
+6. **Phase 6 — session and polish**: session save/load, layer WAVs, mixdown export, performance view, AppImage packaging, automated tests. *(complete)*
 
 ## License
 

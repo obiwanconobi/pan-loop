@@ -477,6 +477,38 @@ void LivePanel::updateControls()
         metroToggle.setToggleState (engine.getMetronome().isEnabled(),
                                     juce::dontSendNotification);
 
+    if (! bpmSlider.isMouseButtonDown()
+        && ! bpmSlider.hasKeyboardFocus (true)
+        && std::abs (bpmSlider.getValue() - transport.getBpm()) > 0.05)
+    {
+        bpmSlider.setValue (transport.getBpm(), juce::dontSendNotification);
+    }
+
+    const auto signature = juce::String (transport.getTimeSignatureNumerator())
+                         + "/" + juce::String (transport.getTimeSignatureDenominator());
+
+    if (! timeSigBox.isPopupActive() && timeSigBox.getText() != signature)
+    {
+        int itemId = 0;
+
+        for (int i = 1; i <= timeSigBox.getNumItems(); ++i)
+        {
+            if (timeSigBox.getItemText (i - 1) == signature)
+            {
+                itemId = i;
+                break;
+            }
+        }
+
+        if (itemId == 0)
+        {
+            itemId = timeSigBox.getNumItems() + 1;
+            timeSigBox.addItem (signature, itemId);
+        }
+
+        timeSigBox.setSelectedId (itemId, juce::dontSendNotification);
+    }
+
     switch (info.state)
     {
         case Transport::State::Playing:

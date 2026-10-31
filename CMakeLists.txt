@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.22)
 
 project(PanLoop VERSION 0.1.0 LANGUAGES C CXX)
 
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -32,6 +34,12 @@ juce_add_gui_app(pan-loop
 
 juce_generate_juce_header(pan-loop)
 
+# A space-free executable name keeps desktop entries, AppImage launchers and
+# shell invocations simple on Linux. The window title remains "Pan Loop".
+if (UNIX AND NOT APPLE)
+    set_target_properties(pan-loop PROPERTIES OUTPUT_NAME "pan-loop")
+endif()
+
 target_include_directories(pan-loop PRIVATE src)
 
 target_sources(pan-loop PRIVATE
@@ -44,6 +52,8 @@ target_sources(pan-loop PRIVATE
     src/app/LivePanel.h
     src/app/MainComponent.cpp
     src/app/MainComponent.h
+    src/app/PerformancePanel.cpp
+    src/app/PerformancePanel.h
     src/app/PlaylistPanel.cpp
     src/app/PlaylistPanel.h
     src/audio/AudioEngine.cpp
@@ -70,6 +80,8 @@ target_sources(pan-loop PRIVATE
     src/midi/MidiMapping.h
     src/midi/MidiPanel.cpp
     src/midi/MidiPanel.h
+    src/session/SessionStore.cpp
+    src/session/SessionStore.h
     src/ui/LevelMeter.cpp
     src/ui/LevelMeter.h
 )
@@ -96,3 +108,65 @@ target_link_libraries(pan-loop PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )
+
+option(PANLOOP_BUILD_TESTS "Build the Pan Loop test suite" ON)
+
+if (PANLOOP_BUILD_TESTS)
+    enable_testing()
+
+    juce_add_console_app(pan-loop-tests
+        PRODUCT_NAME "Pan Loop Tests"
+        NEEDS_CURL FALSE
+        NEEDS_WEB_BROWSER FALSE
+    )
+
+    juce_generate_juce_header(pan-loop-tests)
+
+    target_include_directories(pan-loop-tests PRIVATE src)
+
+    target_sources(pan-loop-tests PRIVATE
+        tests/TestMain.cpp
+        src/audio/AudioEngine.cpp
+        src/audio/AudioEngine.h
+        src/audio/AudioFileLoader.cpp
+        src/audio/AudioFileLoader.h
+        src/audio/LiveLooper.cpp
+        src/audio/LiveLooper.h
+        src/audio/Metronome.cpp
+        src/audio/Metronome.h
+        src/audio/Playlist.cpp
+        src/audio/Playlist.h
+        src/audio/Transport.cpp
+        src/audio/Transport.h
+        src/midi/MidiAction.h
+        src/midi/MidiMapping.h
+        src/session/SessionStore.cpp
+        src/session/SessionStore.h
+    )
+
+    target_compile_definitions(pan-loop-tests PRIVATE
+        JUCE_ALSA=1
+        JUCE_USE_MP3AUDIOFORMAT=1
+        JUCE_USE_OGGVORBIS=1
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_REPORT_APP_USAGE=0
+    )
+
+    target_link_libraries(pan-loop-tests PRIVATE
+        juce::juce_audio_devices
+        juce::juce_audio_formats
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+    )
+
+    add_test(NAME pan-loop-tests COMMAND pan-loop-tests)
+endif()
+
+install(TARGETS pan-loop RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES packaging/pan-loop.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES packaging/pan-loop.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+install(FILES LICENSE
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/pan-loop)

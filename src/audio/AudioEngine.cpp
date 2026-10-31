@@ -547,6 +547,11 @@ float AudioEngine::getOutputLevel() const noexcept
     return outputLevel.load (std::memory_order_relaxed);
 }
 
+float AudioEngine::getOutputGainLinear() const noexcept
+{
+    return outputGainLinear.load (std::memory_order_relaxed);
+}
+
 double AudioEngine::getCurrentSampleRate() const noexcept
 {
     return currentSampleRate.load (std::memory_order_relaxed);

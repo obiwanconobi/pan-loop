@@ -78,6 +78,101 @@ LiveLooper::Snapshot LiveLooper::getSnapshot() const
     return snapshot;
 }
 
+std::vector<LiveLooper::SavedLayer> LiveLooper::copyLayersForSave() const
+{
+    const juce::ScopedReadLock sl (lock);
+
+    std::vector<SavedLayer> result;
+
+    for (const auto& layer : layers)
+    {
+        if (layer == nullptr
+            || layer->state.load (std::memory_order_relaxed) != LiveLayer::State::Playing)
+            continue;
+
+        const auto usable = juce::jlimit (0,
+                                          layer->audio.getNumSamples(),
+                                          layer->usableLengthSamples.load (std::memory_order_relaxed));
+
+        if (usable <= 0)
+            continue;
+
+        SavedLayer saved;
+        saved.name = layer->name;
+        saved.gain = layer->gain.load (std::memory_order_relaxed);
+        saved.muted = layer->muted.load (std::memory_order_relaxed);
+        saved.solo = layer->solo.load (std::memory_order_relaxed);
+        saved.audio.setSize (2, usable, false, true, false);
+
+        for (int channel = 0; channel < 2; ++channel)
+        {
+            const auto sourceChannel = juce::jmin (channel, layer->audio.getNumChannels() - 1);
+            saved.audio.copyFrom (channel, 0,
+                                  layer->audio, sourceChannel, 0,
+                                  usable);
+        }
+
+        result.push_back (std::move (saved));
+    }
+
+    return result;
+}
+
+bool LiveLooper::restoreLayers (std::vector<SavedLayer> savedLayers, juce::int64 cycleLengthSamples)
+{
+    if (cycleLengthSamples <= 0
+        || cycleLengthSamples > static_cast<juce::int64> (std::numeric_limits<int>::max()))
+        return false;
+
+    const auto cycleLength = static_cast<int> (cycleLengthSamples);
+
+    const juce::ScopedWriteLock sl (lock);
+
+    layers.clear();
+    activeLayer = nullptr;
+    state.store (State::Idle, std::memory_order_relaxed);
+    stopRequested.store (false, std::memory_order_relaxed);
+    recordedSamples = 0;
+    discardRemaining = 0;
+    firstLoopTargetSamples = 0;
+    nextLayerId = 1;
+
+    for (auto& saved : savedLayers)
+    {
+        if (saved.audio.getNumSamples() <= 0 || saved.audio.getNumChannels() <= 0)
+            continue;
+
+        auto layer = std::make_shared<LiveLayer>();
+        layer->id = nextLayerId++;
+        layer->name = saved.name.isNotEmpty() ? saved.name
+                                              : "Layer " + juce::String (layer->id);
+        layer->sampleRate = sampleRate;
+        layer->gain.store (juce::jlimit (0.0f, 4.0f, saved.gain), std::memory_order_relaxed);
+        layer->muted.store (saved.muted, std::memory_order_relaxed);
+        layer->solo.store (saved.solo, std::memory_order_relaxed);
+        layer->usableLengthSamples.store (cycleLength, std::memory_order_relaxed);
+        layer->recordedSamples.store (cycleLength, std::memory_order_relaxed);
+
+        layer->audio.setSize (2, cycleLength, false, true, false);
+        layer->audio.clear();
+
+        const auto copyLength = juce::jmin (cycleLength, saved.audio.getNumSamples());
+
+        for (int channel = 0; channel < 2; ++channel)
+        {
+            const auto sourceChannel = juce::jmin (channel, saved.audio.getNumChannels() - 1);
+            layer->audio.copyFrom (channel, 0,
+                                   saved.audio, sourceChannel, 0,
+                                   copyLength);
+        }
+
+        layer->state.store (LiveLayer::State::Playing, std::memory_order_relaxed);
+        layers.push_back (std::move (layer));
+    }
+
+    return ! layers.empty();
+}
+
 bool LiveLooper::hasLayers() const
 {
     const juce::ScopedReadLock sl (lock);
@@ -565,10 +660,19 @@ LiveLooper::ProcessResult LiveLooper::processBlock (juce::AudioBuffer<float>& mi
     return ProcessResult::None;
 }
 
+void LiveLooper::addToMixForRender (juce::AudioBuffer<float>& mix,
+                                    int numSamples,
+                                    juce::int64 cyclePosition,
+                                    juce::int64 cycleLength) const
+{
+    const juce::ScopedReadLock sl (lock);
+    addLayersToMix (mix, numSamples, cyclePosition, cycleLength);
+}
+
 void LiveLooper::addLayersToMix (juce::AudioBuffer<float>& mix,
                                  int numSamples,
                                  juce::int64 cyclePosition,
-                                 juce::int64 cycleLength) noexcept
+                                 juce::int64 cycleLength) const noexcept
 {
     if (cycleLength <= 0 || numSamples <= 0)
         return;

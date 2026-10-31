@@ -10,7 +10,7 @@ namespace AppConfig
     /** The application log file. */
     juce::File getLogFile();
 
-    /** Directory for future session bundles. */
+    /** Default directory for saved `.panloop` session files. */
     juce::File getSessionsDirectory();
 
     /** Starts file logging. Safe to call once at application startup. */

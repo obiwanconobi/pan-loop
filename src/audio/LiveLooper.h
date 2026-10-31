@@ -81,7 +81,18 @@ public:
         int recordingLayerId = -1;
     };
 
+    struct SavedLayer
+    {
+        juce::String name;
+        juce::AudioBuffer<float> audio;
+        float gain = 1.0f;
+        bool muted = false;
+        bool solo = false;
+    };
+
     Snapshot getSnapshot() const;
+    std::vector<SavedLayer> copyLayersForSave() const;
+    bool restoreLayers (std::vector<SavedLayer> savedLayers, juce::int64 cycleLengthSamples);
     bool hasLayers() const;
     int getLayerCount() const;
 
@@ -107,6 +118,12 @@ public:
     bool isRecording() const noexcept;
     bool isRecordingOrArmed() const noexcept;
 
+    /** Offline mix helper used by mixdown export. */
+    void addToMixForRender (juce::AudioBuffer<float>& mix,
+                            int numSamples,
+                            juce::int64 cyclePosition,
+                            juce::int64 cycleLength) const;
+
     // Audio-thread processing. Returns whether the transport should reset or stop
     // after the block (used when the first loop is finalized or aborted).
     ProcessResult processBlock (juce::AudioBuffer<float>& mix,
@@ -128,7 +145,7 @@ private:
     void addLayersToMix (juce::AudioBuffer<float>& mix,
                          int numSamples,
                          juce::int64 cyclePosition,
-                         juce::int64 cycleLength) noexcept;
+                         juce::int64 cycleLength) const noexcept;
     int computeFirstLoopTarget() const noexcept;
     void finalizeFirstLoop (int targetSamples) noexcept;
     void finalizeOverdub (int cycleLengthSamples) noexcept;
