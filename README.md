@@ -25,6 +25,7 @@ Implemented so far:
 - Input/output peak meters and clip indicator
 - Sample rate, buffer size, latency, xrun and CPU display
 - MIDI input enumeration, selection, hot-plug rescan and activity monitor
+- **ALSA raw-MIDI fallback** for USB devices that PipeWire takes over and therefore never appears as an ALSA sequencer client (shown with a `(raw MIDI)` suffix)
 - Automatic selection of a device whose name contains “Live Logic”
 - Dark, stage-oriented UI with Live, Playlist, Layers, Audio, MIDI and Session tabs
 - File logging and per-user config paths
@@ -47,7 +48,7 @@ Implemented so far:
 - **Overdub layers** that start at the cycle boundary, auto-stop at the loop end, and loop in sync with the backing playlist or first loop
 - **Stop Rec** finalizes the current take; **Discard** aborts a take or removes the latest layer
 - **Latency-compensated recording** using JACK input/output latency plus an adjustable record offset
-- **Layers tab** with per-layer gain, mute, solo, delete and clear controls, plus memory usage
+- **Layers tab** with per-layer gain, **pan**, mute, solo, delete and clear controls, plus memory usage
 - First loops are trimmed to their actual length after finalization instead of keeping the recording-buffer allocation
 - Barrier against changing playlist structure while live layers exist, since the playlist defines the master cycle
 - Keyboard shortcuts: `Space` play/pause, `S` stop, `R` record, `T` stop recording, `D` discard
@@ -62,12 +63,12 @@ Implemented so far:
 - **Sample rate and buffer size selection** in the Audio tab for non-JACK backends
 - On JACK, the sample rate is displayed read-only; the buffer size can be changed when the JACK server is PipeWire (via `pw-metadata`) or when the native JACK `jack_bufsize` tool is available
 - **Session save/load** (`.panloop` JSON plus a `<name>.layers/` sidecar directory of 32-bit float WAV layer files)
-- Sessions restore the backing playlist, live layers, layer gain/mute/solo, cycle length, BPM/time signature, bar snap, metronome, input monitoring, backing mute, record offset and MIDI mappings
+- Sessions restore the backing playlist, live layers, layer gain/pan/mute/solo, cycle length, BPM/time signature, bar snap, metronome, input monitoring, backing mute, record offset and MIDI mappings
 - Session loading rejects a sample-rate mismatch instead of silently resampling live layers
 - **Mixdown export** to a stereo 32-bit float WAV file covering exactly one master cycle, including the audible backing/layer mix and output gain
 - **Performance view** with oversized Record, Stop Rec, Discard and Play/Pause controls, cycle progress, backing/layer status and large input/output meters; toggle with the header button or `F11`, exit with `Esc`
 - **AppImage packaging** via `scripts/build-appimage.sh`, plus desktop entry and scalable application icon
-- **Automated tests** for transport, playlist playback, live-layer save/restore and offline mixing, MIDI mapping helpers, PipeWire metadata parsing, session round-trips, sample-rate mismatch handling and mixdown export (`ctest`)
+- **Automated tests** for transport, playlist playback, live-layer save/restore, panning and offline mixing, MIDI mapping/raw-MIDI identifier helpers, PipeWire metadata parsing, session round-trips, sample-rate mismatch handling and mixdown export (`ctest`)
 
 ### Backing playlist notes
 
@@ -85,14 +86,15 @@ Implemented so far:
 - The playlist defines the cycle when present. Adding, removing or reordering playlist files is disabled while live layers exist. Per-file gain remains adjustable.
 - Changing the JACK sample rate clears both the preloaded playlist and live layers.
 - The Audio tab's **Record offset** slider adjusts latency compensation in milliseconds. Adjust it if recorded layers feel early or late relative to the click/backing. The default uses the reported JACK input + output latency.
-- The first loop, overdub and discard paths were verified through JACK loopback; layers can be inspected, muted, soloed and deleted in the Layers tab.
+- The first loop, overdub and discard paths were verified through JACK loopback; layers can be inspected, panned, muted, soloed and deleted in the Layers tab.
+- Layer **Pan** is a stereo balance: `C` keeps both channels at full level, `L 100` keeps only the left channel and `R 100` keeps only the right. Pan is applied to live playback and mixdown export, and saved with the session.
 
 ### Sessions
 
 Open the **Session** tab to save, load, export or start a new session.
 
 - A session is a single `.panloop` JSON file. Recorded live layers are stored next to it in `<session-name>.layers/` as 32-bit float stereo WAV files.
-- Saving keeps the current playlist file paths, per-file gains, BPM, time signature, bar-snap setting, metronome state, monitoring/backing-mute state, record offset and MIDI mappings.
+- Saving keeps the current playlist file paths, per-file gains, layer gain/pan/mute/solo, BPM, time signature, bar-snap setting, metronome state, monitoring/backing-mute state, record offset and MIDI mappings.
 - Loading requires the audio device to be running at the same sample rate as the session. If the rates differ, the load is rejected with a clear message; change the JACK server/PipeWire rate first.
 - **Export Mixdown** renders exactly one master cycle to a 32-bit float WAV file. It uses the current audible mix: backing (unless backing mute is on), all non-muted live layers with solo rules applied, and the output gain. Metronome and test tone are not included.
 - Loading a session stops the transport first. Missing backing files, missing layer files and malformed sessions produce an error without partially replacing the current playlist or layers.
@@ -242,6 +244,15 @@ Suggested footswitch layout:
 
 The Live Logic can be configured to send CC, Note or Program Change messages. MIDI Learn accepts all three; no fixed CC numbers are required. MIDI clock and active sensing are ignored, and repeated messages are debounced.
 
+On PipeWire systems, a USB MIDI device is often grabbed by PipeWire and never appears as an ALSA sequencer client. JUCE's normal `MidiInput` enumeration cannot see those devices, so Pan Loop also scans `/dev/snd/midiC*D*` and opens them directly with ALSA raw-MIDI. Such devices appear in the device list with a `(raw MIDI)` suffix, for example:
+
+```text
+Live Logic MIDI Controller (raw MIDI)
+GP-200 (raw MIDI)
+```
+
+Both routes use the same Learn/mapping/action path. One MIDI input is active at a time; choose the device from the **MIDI** tab.
+
 Mappings are stored at:
 
 `~/.config/pan-loop/midi-map.txt`
@@ -257,7 +268,7 @@ playpause note 1 60
 metronome program 1 5
 ```
 
-Each mapping stores the MIDI channel and number. For CC messages, values 64-127 trigger the action; Note On messages trigger on velocity greater than zero; Program Change messages trigger on receipt. MIDI input uses ALSA (through JUCE), not JACK MIDI.
+Each mapping stores the MIDI channel and number. For CC messages, values 64-127 trigger the action; Note On messages trigger on velocity greater than zero; Program Change messages trigger on receipt. MIDI input uses ALSA (the sequencer through JUCE, with a raw-MIDI fallback), not JACK MIDI.
 
 ## Configuration and logs
 

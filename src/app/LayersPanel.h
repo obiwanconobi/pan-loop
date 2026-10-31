@@ -45,6 +45,7 @@ private:
     juce::Label totalLabel;
     juce::Label selectionLabel;
     juce::Label gainLabel;
+    juce::Label panLabel;
     juce::Label emptyLabel;
 
     juce::TextButton clearButton { "Clear layers" };
@@ -52,6 +53,7 @@ private:
     juce::ToggleButton muteButton { "Mute" };
     juce::ToggleButton soloButton { "Solo" };
     juce::Slider gainSlider;
+    juce::Slider panSlider;
 
     juce::ListBox listBox { "live layers", this };
 

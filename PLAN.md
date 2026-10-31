@@ -10,6 +10,8 @@ A Linux-first standalone live looping app in **C++20 + JUCE**, with JACK audio I
 - [x] Phase 4 — live looper, first loop/bar snap, overdub auto-stop, Stop/Discard, latency compensation, layers and mix controls
 - [x] Phase 5 — MIDI learn, action mappings, persistence, Blackstar quick start
 - [x] Audio settings follow-up — sample rate and buffer-size selectors (non-JACK editable; JACK sample rate read-only, PipeWire quantum or native `jack_bufsize` for the period)
+- [x] Layer mix follow-up — per-layer stereo pan
+- [x] MIDI follow-up — raw-MIDI fallback for USB devices hidden from the ALSA sequencer by PipeWire
 - [x] Phase 6 — session persistence, performance view, AppImage packaging and tests
 
 ## 1. Core loop behavior
@@ -79,7 +81,7 @@ A dark, high-contrast, stage-friendly UI:
 
 - **Live/Performance view**: large Record, Stop Rec, Discard, and Play/Pause buttons; cycle progress; layer indicators; backing track name; tempo/position; input/output meters; xrun/CPU status.
 - **Playlist view**: ordered file list, add files, drag-and-drop, reorder, remove, per-file gain, total cycle duration.
-- **Layers view**: waveform per layer, gain, mute/solo, delete, rename.
+- **Layers view**: waveform per layer, gain, stereo pan, mute/solo, delete, rename.
 - **MIDI view**: device selector, activity indicator, mapping table with Learn/Clear buttons, last received message.
 - **Audio view**: JACK input/output client selection, channel mapping, sample rate/buffer display, latency offset, input monitoring, gains.
 - **Session view**: BPM, time signature, bar snap, click, save/load/export.
@@ -89,6 +91,7 @@ A dark, high-contrast, stage-friendly UI:
 ## 4. MIDI / Blackstar Live Logic
 
 - ALSA MIDI input through JUCE. The Live Logic appears as a USB MIDI device.
+- Direct ALSA raw-MIDI fallback for USB devices that PipeWire owns and does not expose through the ALSA sequencer. These are shown with a `(raw MIDI)` suffix and use the same Learn/mapping path.
 - Supports **CC, Note On/Off, and Program Change**, so it works whether the pedal is configured in live/CC mode or sends program changes.
 - Ignores MIDI clock/active sensing to avoid noise.
 - **MIDI learn**: click Learn next to an action, press the footswitch, mapping is stored. Handles press/release messages and debounce.

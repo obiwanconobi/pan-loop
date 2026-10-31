@@ -6,8 +6,11 @@
 
 #include <array>
 #include <atomic>
+#include <memory>
 #include <optional>
 #include <vector>
+
+class RawMidiInput;
 
 /** Owns the selected MIDI input, MIDI Learn mappings and action dispatch. */
 class MidiManager final : private juce::MidiInputCallback,
@@ -65,6 +68,11 @@ private:
     void dispatchAction (MidiAction action);
     void setMapping (const MidiMapping& mapping);
 
+    void processIncomingMidiMessage (const juce::String& deviceName,
+                                     const juce::MidiMessage& message);
+    bool openRawMidiDevice (const juce::String& identifier);
+    void closeRawMidiDevice();
+
     static juce::File getMappingFile();
     void loadMappings();
     void saveMappings() const;
@@ -87,6 +95,9 @@ private:
     double lastMessageTimeMs = 0.0;
     juce::StringArray logLines;
     juce::uint64 messageCount = 0;
+
+    std::unique_ptr<RawMidiInput> rawMidiInput;
+    juce::String rawMidiDeviceName;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MidiManager)
 };

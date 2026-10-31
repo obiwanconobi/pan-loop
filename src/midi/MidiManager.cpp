@@ -1,5 +1,6 @@
 #include "MidiManager.h"
 
+#include "RawMidiInput.h"
 #include "core/AppConfig.h"
 
 #include <algorithm>
@@ -21,9 +22,10 @@ MidiManager::MidiManager (juce::AudioDeviceManager& manager)
 
 MidiManager::~MidiManager()
 {
+    closeRawMidiDevice();
     deviceManager.removeMidiInputDeviceCallback ({}, this);
 
-    if (enabledIdentifier.isNotEmpty())
+    if (enabledIdentifier.isNotEmpty() && ! enabledIdentifier.startsWith ("rawmidi:"))
         deviceManager.setMidiInputDeviceEnabled (enabledIdentifier, false);
 
     if (mappingDirty.load (std::memory_order_relaxed))
@@ -49,6 +51,20 @@ void MidiManager::refreshDeviceList()
             uniqueDevices.add (device);
     }
 
+    // ALSA sequencer clients are not created for some USB MIDI devices when
+    // PipeWire owns the raw device. Fall back to opening those devices directly.
+    for (const auto& rawDevice : RawMidi::getAvailableDevices())
+    {
+        const auto alreadyPresent = std::any_of (uniqueDevices.begin(), uniqueDevices.end(),
+                                                 [&rawDevice] (const juce::MidiDeviceInfo& existing)
+                                                 {
+                                                     return existing.identifier == rawDevice.identifier;
+                                                 });
+
+        if (! alreadyPresent)
+            uniqueDevices.add ({ rawDevice.name, rawDevice.identifier });
+    }
+
     devices = std::move (uniqueDevices);
     juce::String previousIdentifier;
 
@@ -72,7 +88,10 @@ void MidiManager::refreshDeviceList()
 
         if (! stillPresent)
         {
-            deviceManager.setMidiInputDeviceEnabled (previousIdentifier, false);
+            if (previousIdentifier.startsWith ("rawmidi:"))
+                closeRawMidiDevice();
+            else
+                deviceManager.setMidiInputDeviceEnabled (previousIdentifier, false);
 
             {
                 const juce::ScopedLock sl (lock);
@@ -139,13 +158,31 @@ void MidiManager::setDevice (const juce::String& identifier)
             return;
 
         previous = enabledIdentifier;
-        enabledIdentifier = identifier;
     }
 
-    if (previous.isNotEmpty())
+    closeRawMidiDevice();
+
+    if (previous.isNotEmpty() && ! previous.startsWith ("rawmidi:"))
         deviceManager.setMidiInputDeviceEnabled (previous, false);
 
-    if (identifier.isNotEmpty())
+    if (identifier.isEmpty())
+    {
+        const juce::ScopedLock sl (lock);
+        enabledIdentifier.clear();
+        juce::Logger::writeToLog ("MIDI input disabled");
+        return;
+    }
+
+    if (identifier.startsWith ("rawmidi:"))
+    {
+        if (! openRawMidiDevice (identifier))
+        {
+            const juce::ScopedLock sl (lock);
+            enabledIdentifier.clear();
+            return;
+        }
+    }
+    else
     {
         deviceManager.setMidiInputDeviceEnabled (identifier, true);
 
@@ -157,13 +194,69 @@ void MidiManager::setDevice (const juce::String& identifier)
             enabledIdentifier.clear();
             return;
         }
+    }
 
-        juce::Logger::writeToLog ("MIDI input enabled: " + identifier);
-    }
-    else
     {
-        juce::Logger::writeToLog ("MIDI input disabled");
+        const juce::ScopedLock sl (lock);
+        enabledIdentifier = identifier;
     }
+
+    juce::Logger::writeToLog ("MIDI input enabled: " + identifier);
+}
+
+bool MidiManager::openRawMidiDevice (const juce::String& identifier)
+{
+    RawMidi::DeviceInfo info;
+
+    if (! RawMidi::parseIdentifier (identifier, info))
+        return false;
+
+    closeRawMidiDevice();
+
+    {
+        const juce::ScopedLock sl (lock);
+
+        for (const auto& device : availableDevices)
+        {
+            if (device.identifier == identifier)
+            {
+                rawMidiDeviceName = device.name;
+                break;
+            }
+        }
+    }
+
+    if (rawMidiDeviceName.isEmpty())
+        rawMidiDeviceName = "Raw MIDI " + juce::String (info.card)
+                          + ":" + juce::String (info.device);
+
+    auto input = std::make_unique<RawMidiInput>();
+    const auto deviceName = rawMidiDeviceName;
+    input->onMessage = [this, deviceName] (const juce::MidiMessage& message)
+    {
+        processIncomingMidiMessage (deviceName, message);
+    };
+
+    if (! input->open (info.card, info.device))
+    {
+        juce::Logger::writeToLog ("Failed to open raw MIDI device: " + identifier);
+        rawMidiDeviceName.clear();
+        return false;
+    }
+
+    rawMidiInput = std::move (input);
+    return true;
+}
+
+void MidiManager::closeRawMidiDevice()
+{
+    if (rawMidiInput != nullptr)
+    {
+        rawMidiInput->close();
+        rawMidiInput.reset();
+    }
+
+    rawMidiDeviceName.clear();
 }
 
 MidiManager::Snapshot MidiManager::getSnapshot() const
@@ -227,11 +320,18 @@ juce::String MidiManager::describeMessage (const juce::MidiMessage& message)
 void MidiManager::handleIncomingMidiMessage (juce::MidiInput* source,
                                              const juce::MidiMessage& message)
 {
+    processIncomingMidiMessage (source != nullptr ? source->getName()
+                                                  : juce::String ("MIDI input"),
+                                message);
+}
+
+void MidiManager::processIncomingMidiMessage (const juce::String& deviceName,
+                                              const juce::MidiMessage& message)
+{
     // Clock and active-sensing arrive continuously; don't feed them into the UI.
     if (message.isMidiClock() || message.isActiveSense())
         return;
 
-    const auto deviceName = source != nullptr ? source->getName() : juce::String ("MIDI input");
     const auto description = describeMessage (message);
     const auto nowMs = juce::Time::getMillisecondCounterHiRes();
     const auto timestamp = juce::Time::getCurrentTime().formatted ("%H:%M:%S");
@@ -277,7 +377,7 @@ void MidiManager::handleIncomingMidiMessage (juce::MidiInput* source,
 
 void MidiManager::injectMidiMessageForTest (const juce::MidiMessage& message)
 {
-    handleIncomingMidiMessage (nullptr, message);
+    processIncomingMidiMessage ("Test MIDI", message);
 }
 
 void MidiManager::startLearning (MidiAction action)

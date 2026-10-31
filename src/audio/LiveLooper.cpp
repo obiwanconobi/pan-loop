@@ -54,6 +54,7 @@ LiveLooper::Snapshot LiveLooper::getSnapshot() const
         info.id = layer->id;
         info.name = layer->name;
         info.gain = layer->gain.load (std::memory_order_relaxed);
+        info.pan = layer->pan.load (std::memory_order_relaxed);
         info.muted = layer->muted.load (std::memory_order_relaxed);
         info.solo = layer->solo.load (std::memory_order_relaxed);
         info.armed = armed;
@@ -100,6 +101,7 @@ std::vector<LiveLooper::SavedLayer> LiveLooper::copyLayersForSave() const
         SavedLayer saved;
         saved.name = layer->name;
         saved.gain = layer->gain.load (std::memory_order_relaxed);
+        saved.pan = layer->pan.load (std::memory_order_relaxed);
         saved.muted = layer->muted.load (std::memory_order_relaxed);
         saved.solo = layer->solo.load (std::memory_order_relaxed);
         saved.audio.setSize (2, usable, false, true, false);
@@ -148,6 +150,7 @@ bool LiveLooper::restoreLayers (std::vector<SavedLayer> savedLayers, juce::int64
                                               : "Layer " + juce::String (layer->id);
         layer->sampleRate = sampleRate;
         layer->gain.store (juce::jlimit (0.0f, 4.0f, saved.gain), std::memory_order_relaxed);
+        layer->pan.store (juce::jlimit (-1.0f, 1.0f, saved.pan), std::memory_order_relaxed);
         layer->muted.store (saved.muted, std::memory_order_relaxed);
         layer->solo.store (saved.solo, std::memory_order_relaxed);
         layer->usableLengthSamples.store (cycleLength, std::memory_order_relaxed);
@@ -463,6 +466,14 @@ void LiveLooper::setLayerGain (int layerId, float gain)
         layer->gain.store (juce::jlimit (0.0f, 4.0f, gain), std::memory_order_relaxed);
 }
 
+void LiveLooper::setLayerPan (int layerId, float pan)
+{
+    const juce::ScopedReadLock sl (lock);
+
+    if (auto* layer = findLayerUnderLock (layerId))
+        layer->pan.store (juce::jlimit (-1.0f, 1.0f, pan), std::memory_order_relaxed);
+}
+
 void LiveLooper::setLayerMuted (int layerId, bool muted)
 {
     const juce::ScopedReadLock sl (lock);
@@ -713,6 +724,10 @@ void LiveLooper::addLayersToMix (juce::AudioBuffer<float>& mix,
             continue;
 
         const auto gain = layer->gain.load (std::memory_order_relaxed);
+        const auto pan = juce::jlimit (-1.0f, 1.0f,
+                                       layer->pan.load (std::memory_order_relaxed));
+        const auto leftGain = gain * (pan > 0.0f ? 1.0f - pan : 1.0f);
+        const auto rightGain = gain * (pan < 0.0f ? 1.0f + pan : 1.0f);
         auto position = cyclePosition % cycleLength;
 
         if (position >= length)
@@ -732,13 +747,14 @@ void LiveLooper::addLayersToMix (juce::AudioBuffer<float>& mix,
             for (int channel = 0; channel < mix.getNumChannels(); ++channel)
             {
                 const auto sourceChannel = juce::jmin (channel, layer->audio.getNumChannels() - 1);
+                const auto channelGain = (channel % 2 == 0) ? leftGain : rightGain;
                 mix.addFrom (channel,
                              written,
                              layer->audio,
                              sourceChannel,
                              static_cast<int> (position),
                              available,
-                             gain);
+                             channelGain);
             }
 
             written += available;

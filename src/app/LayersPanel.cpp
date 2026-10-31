@@ -27,6 +27,7 @@ LayersPanel::LayersPanel (AudioEngine& audioEngine)
     styleLabel (totalLabel, 13.0f);
     styleLabel (selectionLabel, 13.0f, true);
     styleLabel (gainLabel, 12.0f);
+    styleLabel (panLabel, 12.0f);
     styleLabel (emptyLabel, 15.0f);
 
     titleLabel.setText ("Layers", juce::dontSendNotification);
@@ -44,6 +45,9 @@ LayersPanel::LayersPanel (AudioEngine& audioEngine)
     selectionLabel.setText ("No layer selected", juce::dontSendNotification);
     gainLabel.setText ("Gain", juce::dontSendNotification);
     gainLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+
+    panLabel.setText ("Pan", juce::dontSendNotification);
+    panLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
     emptyLabel.setJustificationType (juce::Justification::centred);
     emptyLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
@@ -85,6 +89,51 @@ LayersPanel::LayersPanel (AudioEngine& audioEngine)
                                                  static_cast<float> (gainSlider.getValue() / 100.0));
     };
 
+    panSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    panSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 24);
+    panSlider.setRange (-1.0, 1.0, 0.01);
+    panSlider.setValue (0.0, juce::dontSendNotification);
+    panSlider.setEnabled (false);
+    panSlider.setTooltip ("Stereo balance for the selected layer. C is centre.");
+    panSlider.textFromValueFunction = [] (double value)
+    {
+        const auto amount = juce::roundToInt (std::abs (value) * 100.0);
+
+        if (amount == 0)
+            return juce::String ("C");
+
+        return juce::String (value < 0.0 ? "L " : "R ") + juce::String (amount);
+    };
+    panSlider.valueFromTextFunction = [] (const juce::String& text)
+    {
+        const auto trimmed = text.trim().toLowerCase();
+
+        if (trimmed == "c" || trimmed == "center" || trimmed == "centre")
+            return 0.0;
+
+        const auto left = trimmed.startsWith ("l");
+        const auto right = trimmed.startsWith ("r");
+        const auto number = trimmed.retainCharacters ("0123456789.").getDoubleValue();
+        const auto normalised = juce::jlimit (0.0, 1.0,
+                                              number > 1.0 ? number / 100.0 : number);
+
+        if (left)
+            return -normalised;
+
+        if (right)
+            return normalised;
+
+        return juce::jlimit (-1.0, 1.0,
+                             number > 1.0 ? number / 100.0 : number);
+    };
+    panSlider.onValueChange = [this]
+    {
+        if (selectedLayerId >= 0)
+            engine.getLiveLooper().setLayerPan (selectedLayerId,
+                                                static_cast<float> (panSlider.getValue()));
+    };
+    panSlider.updateText();
+
     listBox.setRowHeight (34);
     listBox.setColour (juce::ListBox::backgroundColourId, DarkLookAndFeel::panelAlt());
     listBox.setColour (juce::ListBox::outlineColourId, DarkLookAndFeel::outline());
@@ -96,11 +145,13 @@ LayersPanel::LayersPanel (AudioEngine& audioEngine)
     addAndMakeVisible (totalLabel);
     addAndMakeVisible (selectionLabel);
     addAndMakeVisible (gainLabel);
+    addAndMakeVisible (panLabel);
     addAndMakeVisible (clearButton);
     addAndMakeVisible (deleteButton);
     addAndMakeVisible (muteButton);
     addAndMakeVisible (soloButton);
     addAndMakeVisible (gainSlider);
+    addAndMakeVisible (panSlider);
     addAndMakeVisible (listBox);
     addAndMakeVisible (emptyLabel);
 
@@ -144,7 +195,7 @@ void LayersPanel::resized()
     statusLabel.setBounds (area.removeFromTop (22));
     area.removeFromTop (8);
 
-    bottomBarArea = area.removeFromBottom (92);
+    bottomBarArea = area.removeFromBottom (124);
     area.removeFromBottom (10);
 
     listArea = area;
@@ -166,6 +217,11 @@ void LayersPanel::resized()
     soloButton.setBounds (gainRow.removeFromLeft (80));
     gainRow.removeFromLeft (12);
     deleteButton.setBounds (gainRow.removeFromLeft (90));
+
+    right.removeFromTop (8);
+    auto panRow = right.removeFromTop (28);
+    panLabel.setBounds (panRow.removeFromLeft (56));
+    panSlider.setBounds (panRow.removeFromLeft (220));
 }
 
 int LayersPanel::getNumRows()
@@ -320,6 +376,7 @@ void LayersPanel::updateControls()
     muteButton.setEnabled (hasSelection);
     soloButton.setEnabled (hasSelection);
     gainSlider.setEnabled (hasSelection);
+    panSlider.setEnabled (hasSelection);
 
     statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
     statusLabel.setText ("Use Record, Stop Rec and Discard on the Live tab.",
@@ -334,6 +391,8 @@ void LayersPanel::updateSelectionControls()
         muteButton.setToggleState (false, juce::dontSendNotification);
         soloButton.setToggleState (false, juce::dontSendNotification);
         gainSlider.setValue (100.0, juce::dontSendNotification);
+        panSlider.setValue (0.0, juce::dontSendNotification);
+        panSlider.updateText();
         return;
     }
 
@@ -348,6 +407,12 @@ void LayersPanel::updateSelectionControls()
 
         if (! gainSlider.isMouseButtonDown())
             gainSlider.setValue (layer.gain * 100.0, juce::dontSendNotification);
+
+        if (! panSlider.isMouseButtonDown() && ! panSlider.hasKeyboardFocus (true))
+        {
+            panSlider.setValue (layer.pan, juce::dontSendNotification);
+            panSlider.updateText();
+        }
 
         return;
     }

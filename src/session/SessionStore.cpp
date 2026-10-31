@@ -207,6 +207,7 @@ namespace SessionStore
                 object->setProperty ("file", file.getFileName());
                 object->setProperty ("name", layer.name);
                 object->setProperty ("gain", layer.gain);
+                object->setProperty ("pan", layer.pan);
                 object->setProperty ("muted", layer.muted);
                 object->setProperty ("solo", layer.solo);
                 layerArray.add (juce::var (object));
@@ -414,6 +415,8 @@ namespace SessionStore
                 saved.name = getString (object->getProperty ("name"), item->name);
                 saved.audio = std::move (item->audio);
                 saved.gain = static_cast<float> (getDouble (object->getProperty ("gain"), 1.0));
+                saved.pan = static_cast<float> (juce::jlimit (-1.0, 1.0,
+                                                             getDouble (object->getProperty ("pan"), 0.0)));
                 saved.muted = getBool (object->getProperty ("muted"), false);
                 saved.solo = getBool (object->getProperty ("solo"), false);
                 loadedLayers.push_back (std::move (saved));

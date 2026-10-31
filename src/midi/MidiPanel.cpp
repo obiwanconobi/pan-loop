@@ -261,8 +261,19 @@ void MidiPanel::updateSelection()
     if (juce::isPositiveAndBelow (index, devices.size()))
     {
         midi.setDevice (devices[index].identifier);
-        statusLabel.setText ("Connected: " + devices[index].name, juce::dontSendNotification);
-        statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::playing());
+
+        if (midi.getEnabledDeviceIdentifier() == devices[index].identifier)
+        {
+            statusLabel.setText ("Connected: " + devices[index].name, juce::dontSendNotification);
+            statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::playing());
+        }
+        else
+        {
+            statusLabel.setText ("Could not open: " + devices[index].name
+                                     + " - check /dev/snd permissions",
+                                 juce::dontSendNotification);
+            statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::recording());
+        }
     }
 }
 

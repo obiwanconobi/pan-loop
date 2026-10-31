@@ -28,6 +28,7 @@ struct LiveLayer
     std::atomic<int> recordedSamples { 0 };
     std::atomic<bool> trimRequested { false };
     std::atomic<float> gain { 1.0f };
+    std::atomic<float> pan { 0.0f }; // -1 = left, 0 = centre, +1 = right
     std::atomic<bool> muted { false };
     std::atomic<bool> solo { false };
 
@@ -65,6 +66,7 @@ public:
         int id = 0;
         juce::String name;
         float gain = 1.0f;
+        float pan = 0.0f;
         bool muted = false;
         bool solo = false;
         bool armed = false;
@@ -86,6 +88,7 @@ public:
         juce::String name;
         juce::AudioBuffer<float> audio;
         float gain = 1.0f;
+        float pan = 0.0f;
         bool muted = false;
         bool solo = false;
     };
@@ -107,6 +110,7 @@ public:
     void trimFinishedLayers();
 
     void setLayerGain (int layerId, float gain);
+    void setLayerPan (int layerId, float pan);
     void setLayerMuted (int layerId, bool muted);
     void setLayerSolo (int layerId, bool solo);
 

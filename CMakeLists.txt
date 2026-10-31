@@ -4,6 +4,10 @@ project(PanLoop VERSION 0.1.0 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 
+if (UNIX AND NOT APPLE)
+    find_package(ALSA REQUIRED)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -82,6 +86,8 @@ target_sources(pan-loop PRIVATE
     src/midi/MidiMapping.h
     src/midi/MidiPanel.cpp
     src/midi/MidiPanel.h
+    src/midi/RawMidiInput.cpp
+    src/midi/RawMidiInput.h
     src/session/SessionStore.cpp
     src/session/SessionStore.h
     src/ui/LevelMeter.cpp
@@ -110,6 +116,10 @@ target_link_libraries(pan-loop PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )
+
+if (UNIX AND NOT APPLE)
+    target_link_libraries(pan-loop PRIVATE ${ALSA_LIBRARIES})
+endif()
 
 option(PANLOOP_BUILD_TESTS "Build the Pan Loop test suite" ON)
 
@@ -144,6 +154,8 @@ if (PANLOOP_BUILD_TESTS)
         src/audio/Transport.h
         src/midi/MidiAction.h
         src/midi/MidiMapping.h
+        src/midi/RawMidiInput.cpp
+        src/midi/RawMidiInput.h
         src/session/SessionStore.cpp
         src/session/SessionStore.h
     )
@@ -163,6 +175,10 @@ if (PANLOOP_BUILD_TESTS)
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
     )
+
+    if (UNIX AND NOT APPLE)
+        target_link_libraries(pan-loop-tests PRIVATE ${ALSA_LIBRARIES})
+    endif()
 
     add_test(NAME pan-loop-tests COMMAND pan-loop-tests)
 endif()

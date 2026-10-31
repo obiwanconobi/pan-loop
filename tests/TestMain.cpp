@@ -8,6 +8,7 @@
 #include "audio/Transport.h"
 #include "midi/MidiAction.h"
 #include "midi/MidiMapping.h"
+#include "midi/RawMidiInput.h"
 #include "session/SessionStore.h"
 
 #include <cmath>
@@ -284,6 +285,15 @@ namespace
         test.close (mix.getSample (1, 999), 0.1, 1.0e-6,
                     "Offline blend covers the full cycle");
 
+        looper.setLayerPan (snapshot.layers[0].id, -1.0f);
+        mix.clear();
+        looper.addToMixForRender (mix, 1000, 0, 1000);
+        test.close (mix.getSample (0, 0), 0.05, 1.0e-6,
+                    "Hard-left pan keeps the left channel");
+        test.close (mix.getSample (1, 0), 0.0, 1.0e-6,
+                    "Hard-left pan silences the right channel");
+
+        looper.setLayerPan (snapshot.layers[0].id, 0.0f);
         looper.setLayerMuted (snapshot.layers[0].id, true);
         mix.clear();
         looper.addToMixForRender (mix, 1000, 0, 1000);
@@ -340,6 +350,19 @@ namespace
         test.check (! empty.valid, "Invalid PipeWire metadata is rejected");
     }
 
+    void testRawMidiIdentifiers (TestContext& test)
+    {
+        RawMidi::DeviceInfo info;
+        test.check (RawMidi::parseIdentifier ("rawmidi:3:0", info),
+                    "Raw MIDI identifier is parsed");
+        test.check (info.card == 3 && info.device == 0,
+                    "Raw MIDI card and device are parsed");
+        test.check (! RawMidi::parseIdentifier ("14-0", info),
+                    "ALSA sequencer identifiers are not treated as raw MIDI");
+        test.check (! RawMidi::parseIdentifier ("rawmidi:bad:0", info),
+                    "Malformed raw MIDI identifiers are rejected");
+    }
+
     void testSessionRoundTrip (TestContext& test, const juce::File& root)
     {
         FakeAudioDevice device (48000.0, 512);
@@ -383,6 +406,7 @@ namespace
         juce::FloatVectorOperations::fill (layers.back().audio.getWritePointer (0), 0.2f, 48000);
         juce::FloatVectorOperations::fill (layers.back().audio.getWritePointer (1), 0.2f, 48000);
         layers.back().gain = 0.8f;
+        layers.back().pan = -0.5f;
         layers.back().muted = false;
         layers.back().solo = false;
 
@@ -485,6 +509,7 @@ namespace
         if (! loadedLayers.empty())
         {
             test.close (loadedLayers[0].gain, 0.8, 1.0e-6, "Loaded layer restores gain");
+            test.close (loadedLayers[0].pan, -0.5, 1.0e-6, "Loaded layer restores pan");
             test.close (loadedLayers[0].audio.getSample (0, 1234), 0.2, 1.0e-6,
                         "Loaded layer restores audio");
         }
@@ -502,8 +527,8 @@ namespace
             test.check (mixed->getNumSamples() == 48000, "Mixdown is exactly one cycle long");
             test.close (mixed->audio.getSample (0, 100), 0.26, 2.0e-4,
                         "Mixdown sums backing and live layer with gain");
-            test.close (mixed->audio.getSample (1, 47999), 0.26, 2.0e-4,
-                        "Mixdown covers the end of the cycle");
+            test.close (mixed->audio.getSample (1, 47999), 0.18, 2.0e-4,
+                        "Mixdown applies layer pan and covers the full cycle");
         }
 
         FakeAudioDevice wrongRateDevice (44100.0, 512);
@@ -545,6 +570,7 @@ int main()
     testLiveLooper (test);
     testMidiMappingHelpers (test);
     testBufferSizeMetadata (test);
+    testRawMidiIdentifiers (test);
     testSessionRoundTrip (test, root);
 
     root.deleteRecursively();
