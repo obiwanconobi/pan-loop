@@ -9,6 +9,7 @@ A Linux-first standalone live looping app in **C++20 + JUCE**, with JACK audio I
 - [x] Phase 3 — backing playlist, file decoding/resampling, ordered sequence, gapless loop, per-file gain, memory display
 - [x] Phase 4 — live looper, first loop/bar snap, overdub auto-stop, Stop/Discard, latency compensation, layers and mix controls
 - [x] Phase 5 — MIDI learn, action mappings, persistence, Blackstar quick start
+- [x] Pre-Phase 6 enhancement — sample rate selector (editable on non-JACK backends; JACK server rate shown read-only)
 - [ ] Phase 6 — session persistence and polish
 
 ## 1. Core loop behavior

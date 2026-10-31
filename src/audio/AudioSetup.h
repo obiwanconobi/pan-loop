@@ -12,7 +12,8 @@ namespace AudioSetup
         Falls back to mono input and/or mono output if the device cannot provide stereo. */
     juce::String applyStereoSetup (juce::AudioDeviceManager& manager,
                                    const juce::String& inputDeviceName,
-                                   const juce::String& outputDeviceName);
+                                   const juce::String& outputDeviceName,
+                                   double requestedSampleRate = 0.0);
 
     /** Tries to switch the manager to the JACK backend. */
     void preferJack (juce::AudioDeviceManager& manager);

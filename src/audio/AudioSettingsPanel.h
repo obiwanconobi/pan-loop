@@ -3,6 +3,8 @@
 #include <JuceHeader.h>
 #include "ui/LevelMeter.h"
 
+#include <vector>
+
 class AudioEngine;
 
 /** Device selection, monitoring, gain and meter controls for phase 1. */
@@ -24,6 +26,7 @@ private:
 
     void rebuildBackendList();
     void rebuildDeviceLists();
+    void rebuildSampleRateList();
     void applyDeviceSelection();
     void updateStatus();
     void updateMeters();
@@ -38,10 +41,15 @@ private:
     juce::Label backendLabel;
     juce::Label inputLabel;
     juce::Label outputLabel;
+    juce::Label sampleRateLabel;
+    juce::Label sampleRateHintLabel;
 
     juce::ComboBox backendBox;
     juce::ComboBox inputBox;
     juce::ComboBox outputBox;
+    juce::ComboBox sampleRateBox;
+
+    std::vector<double> sampleRates;
 
     juce::TextButton applyButton { "Apply" };
     juce::TextButton rescanButton { "Rescan" };

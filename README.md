@@ -59,6 +59,8 @@ Implemented so far:
 - MIDI actions dispatched safely on the message thread; repeated messages are debounced
 - Backing mute toggle in the Playlist tab and input-monitor synchronization in the Audio tab
 - MIDI Learn and action dispatch verified with injected CC, Note and Program Change messages, including mapping persistence across restarts
+- **Sample rate selection** in the Audio tab for non-JACK backends
+- JACK's server-owned sample rate is displayed read-only with a clear hint
 
 Session persistence and polish are the next phase.
 
@@ -143,6 +145,13 @@ pw-link -l | grep -A4 -B4 pan-loop
 ```
 
 If JACK is not running, the Audio tab lets you select another backend (ALSA / PulseAudio) for basic testing. JACK is the intended backend for the final application.
+
+### Sample rate
+
+- **JACK owns the sample rate.** The Audio tab shows the current JACK server rate and explains that it must be changed in the JACK server/PipeWire configuration (for example with `qjackctl` or PipeWire metadata).
+- For **ALSA / PulseAudio** fallback backends, the Audio tab exposes a sample rate selector. Choose a rate and press **Apply**.
+- If the JACK server rate changes and the app reopens its audio device, the preloaded playlist and live layers are cleared because those buffers are tied to the previous rate. Restart the app or reselect the device after changing the JACK server rate.
+- Sample rate and device selection persistence across app restarts is planned for the session/settings work in Phase 6.
 
 ### JACK limitations
 

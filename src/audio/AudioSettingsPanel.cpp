@@ -4,8 +4,21 @@
 #include "app/DarkLookAndFeel.h"
 #include "ui/LevelMeter.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace
 {
+    juce::String formatSampleRate (double rate)
+    {
+        const auto kHz = rate / 1000.0;
+
+        if (std::abs (kHz - std::round (kHz)) < 0.01)
+            return juce::String (static_cast<int> (std::round (kHz))) + " kHz";
+
+        return juce::String (kHz, 1) + " kHz";
+    }
+
     void styleLabel (juce::Label& label, float height = 14.0f, bool bold = false)
     {
         label.setFont (juce::Font (juce::FontOptions (height,
@@ -32,12 +45,17 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
     styleLabel (backendLabel, 14.0f);
     styleLabel (inputLabel, 14.0f);
     styleLabel (outputLabel, 14.0f);
+    styleLabel (sampleRateLabel, 14.0f);
+    styleLabel (sampleRateHintLabel, 12.0f);
     styleLabel (jackStatusLabel, 14.0f, true);
     styleLabel (statusLabel, 13.0f, true);
 
     backendLabel.setText ("Backend", juce::dontSendNotification);
     inputLabel.setText ("Input device", juce::dontSendNotification);
     outputLabel.setText ("Output device", juce::dontSendNotification);
+    sampleRateLabel.setText ("Sample rate", juce::dontSendNotification);
+    sampleRateHintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+    sampleRateHintLabel.setJustificationType (juce::Justification::centredLeft);
 
     statusLabel.setJustificationType (juce::Justification::topLeft);
 
@@ -50,9 +68,12 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
     addAndMakeVisible (backendLabel);
     addAndMakeVisible (inputLabel);
     addAndMakeVisible (outputLabel);
+    addAndMakeVisible (sampleRateLabel);
+    addAndMakeVisible (sampleRateHintLabel);
     addAndMakeVisible (backendBox);
     addAndMakeVisible (inputBox);
     addAndMakeVisible (outputBox);
+    addAndMakeVisible (sampleRateBox);
     addAndMakeVisible (applyButton);
     addAndMakeVisible (rescanButton);
     addAndMakeVisible (jackStatusLabel);
@@ -151,6 +172,7 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
     rescanButton.onClick = [this]
     {
         rebuildDeviceLists();
+        rebuildSampleRateList();
         updateStatus();
     };
 
@@ -181,6 +203,7 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
 
     rebuildBackendList();
     rebuildDeviceLists();
+    rebuildSampleRateList();
     updateStatus();
 
     startTimerHz (30);
@@ -190,9 +213,9 @@ void AudioSettingsPanel::resized()
 {
     auto area = getLocalBounds().reduced (18);
 
-    deviceGroup.setBounds (area.removeFromTop (252));
+    deviceGroup.setBounds (area.removeFromTop (290));
     area.removeFromTop (14);
-    mixGroup.setBounds (area.removeFromTop (270));
+    mixGroup.setBounds (area.removeFromTop (250));
     area.removeFromTop (10);
     errorLabel.setBounds (area.removeFromTop (30));
 
@@ -216,6 +239,13 @@ void AudioSettingsPanel::resized()
         row = inner.removeFromTop (30);
         outputLabel.setBounds (row.removeFromLeft (95));
         outputBox.setBounds (row.removeFromLeft (320));
+
+        inner.removeFromTop (10);
+        row = inner.removeFromTop (30);
+        sampleRateLabel.setBounds (row.removeFromLeft (95));
+        sampleRateBox.setBounds (row.removeFromLeft (170));
+        row.removeFromLeft (10);
+        sampleRateHintLabel.setBounds (row.removeFromLeft (420));
 
         inner.removeFromTop (10);
         row = inner.removeFromTop (30);
@@ -271,6 +301,7 @@ void AudioSettingsPanel::refreshFromManager()
 {
     rebuildBackendList();
     rebuildDeviceLists();
+    rebuildSampleRateList();
     updateStatus();
 }
 
@@ -367,6 +398,78 @@ void AudioSettingsPanel::rebuildDeviceLists()
     outputBox.setEnabled (! outputs.isEmpty());
 }
 
+void AudioSettingsPanel::rebuildSampleRateList()
+{
+    const juce::ScopedValueSetter<bool> guard (updatingControls, true);
+
+    auto* device = deviceManager.getCurrentAudioDevice();
+    const auto type = deviceManager.getCurrentAudioDeviceType();
+    const auto isJack = type.equalsIgnoreCase ("JACK");
+
+    juce::Array<double> availableRates;
+
+    if (device != nullptr)
+        availableRates = device->getAvailableSampleRates();
+
+    if (availableRates.isEmpty())
+    {
+        for (const auto rate : { 44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0 })
+            availableRates.add (rate);
+    }
+
+    std::vector<double> uniqueRates;
+
+    for (const auto rate : availableRates)
+    {
+        if (rate <= 0.0)
+            continue;
+
+        if (std::find (uniqueRates.begin(), uniqueRates.end(), rate) == uniqueRates.end())
+            uniqueRates.push_back (rate);
+    }
+
+    std::sort (uniqueRates.begin(), uniqueRates.end());
+
+    const auto setup = deviceManager.getAudioDeviceSetup();
+    const auto currentRate = setup.sampleRate > 0.0
+                               ? setup.sampleRate
+                               : (device != nullptr ? device->getCurrentSampleRate() : 0.0);
+
+    if (currentRate > 0.0
+        && std::find (uniqueRates.begin(), uniqueRates.end(), currentRate) == uniqueRates.end())
+    {
+        uniqueRates.push_back (currentRate);
+        std::sort (uniqueRates.begin(), uniqueRates.end());
+    }
+
+    sampleRates = uniqueRates;
+    sampleRateBox.clear (juce::dontSendNotification);
+    sampleRateBox.addItem ("Default", 1);
+
+    int selectedId = 1;
+
+    for (int i = 0; i < static_cast<int> (sampleRates.size()); ++i)
+    {
+        sampleRateBox.addItem (formatSampleRate (sampleRates[static_cast<size_t> (i)]), i + 2);
+
+        if (std::abs (sampleRates[static_cast<size_t> (i)] - currentRate) < 0.5)
+            selectedId = i + 2;
+    }
+
+    sampleRateBox.setSelectedId (selectedId, juce::dontSendNotification);
+    sampleRateBox.setEnabled (! isJack && ! sampleRates.empty());
+
+    if (isJack)
+        sampleRateHintLabel.setText ("JACK server rate - change it in JACK/PipeWire",
+                                     juce::dontSendNotification);
+    else if (device != nullptr)
+        sampleRateHintLabel.setText ("Choose a rate, then Apply",
+                                     juce::dontSendNotification);
+    else
+        sampleRateHintLabel.setText ("Default device rate",
+                                     juce::dontSendNotification);
+}
+
 void AudioSettingsPanel::applyDeviceSelection()
 {
     const auto inputName = inputBox.getText();
@@ -378,7 +481,23 @@ void AudioSettingsPanel::applyDeviceSelection()
         return;
     }
 
-    const auto error = AudioSetup::applyStereoSetup (deviceManager, inputName, outputName);
+    double requestedSampleRate = 0.0;
+    const auto selectedRateId = sampleRateBox.getSelectedId();
+
+    if (selectedRateId >= 2
+        && selectedRateId - 2 < static_cast<int> (sampleRates.size()))
+    {
+        requestedSampleRate = sampleRates[static_cast<size_t> (selectedRateId - 2)];
+    }
+
+    // JACK owns its graph sample rate; the app can only follow it.
+    if (deviceManager.getCurrentAudioDeviceType().equalsIgnoreCase ("JACK"))
+        requestedSampleRate = 0.0;
+
+    const auto error = AudioSetup::applyStereoSetup (deviceManager,
+                                                     inputName,
+                                                     outputName,
+                                                     requestedSampleRate);
 
     if (error.isNotEmpty())
         showError (error);
@@ -387,6 +506,7 @@ void AudioSettingsPanel::applyDeviceSelection()
 
     updateStatus();
     rebuildDeviceLists();
+    rebuildSampleRateList();
 }
 
 void AudioSettingsPanel::updateStatus()
