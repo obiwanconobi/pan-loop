@@ -1,6 +1,7 @@
 #include "MainComponent.h"
 
 #include "app/DarkLookAndFeel.h"
+#include "app/LayersPanel.h"
 #include "app/LivePanel.h"
 #include "app/PlaylistPanel.h"
 #include "audio/AudioSettingsPanel.h"
@@ -87,10 +88,11 @@ namespace
         {
             const auto infoState = engine.getTransport().getPositionInfo();
             const auto playlistInfo = engine.getPlaylist().getSnapshot();
+            const auto layerInfo = engine.getLiveLooper().getSnapshot();
 
             juce::String text;
             text << "Application: Pan Loop " << ProjectInfo::versionString << "\n"
-                 << "Phase: 3 - backing playlist, transport and metronome\n"
+                 << "Phase: 4 - live looper, backing playlist, transport and metronome\n"
                  << "Transport: " << transportStateName (infoState.state)
                  << " | bar " << infoState.bar << "." << infoState.beat
                  << " | " << juce::String (infoState.bpm, 1) << " BPM"
@@ -98,6 +100,10 @@ namespace
                  << "Playlist: " << static_cast<int> (playlistInfo.items.size()) << " file(s)"
                  << " | cycle " << juce::String (playlistInfo.totalDurationSeconds, 2) << " s"
                  << " | " << juce::String (playlistInfo.memoryUsageBytes / (1024.0 * 1024.0), 1) << " MB\n"
+                 << "Live layers: " << static_cast<int> (layerInfo.layers.size())
+                 << " | " << juce::String (layerInfo.totalMemoryUsageBytes / (1024.0 * 1024.0), 1) << " MB"
+                 << " | " << (engine.getLiveLooper().isRecording() ? "recording"
+                                   : engine.getLiveLooper().isArmed() ? "armed" : "idle") << "\n"
                  << "Metronome: " << (engine.getMetronome().isEnabled() ? "on" : "off")
                  << " | level " << juce::String (engine.getMetronome().getLevel() * 100.0f, 0) << " %\n"
                  << "Config directory: " << AppConfig::getConfigDirectory().getFullPathName() << "\n"
@@ -155,6 +161,16 @@ namespace
             for (const auto& item : playlistInfo.items)
                 text << "  " << item.name << " (" << juce::String (item.durationSeconds, 2) << " s)\n";
 
+            const auto layerInfo = engine.getLiveLooper().getSnapshot();
+            text << "Live layers: " << static_cast<int> (layerInfo.layers.size())
+                 << " | " << juce::String (layerInfo.totalMemoryUsageBytes / (1024.0 * 1024.0), 1) << " MB\n";
+
+            for (const auto& layer : layerInfo.layers)
+                text << "  " << layer.name << " ("
+                     << juce::String (layer.durationSeconds, 2) << " s"
+                     << (layer.recording ? ", recording" : layer.armed ? ", armed" : "")
+                     << ")\n";
+
             return text;
         }
 
@@ -195,7 +211,7 @@ MainComponent::MainComponent()
     subtitleLabel.setFont (juce::Font (juce::FontOptions (13.0f)));
     subtitleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    phaseLabel.setText ("PHASE 3  |  BACKING PLAYLIST", juce::dontSendNotification);
+    phaseLabel.setText ("PHASE 4  |  LIVE LOOPER", juce::dontSendNotification);
     phaseLabel.setFont (juce::Font (juce::FontOptions (13.0f, juce::Font::bold)));
     phaseLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::accent());
     phaseLabel.setJustificationType (juce::Justification::centredRight);
@@ -217,6 +233,7 @@ MainComponent::MainComponent()
     tabs.addTab ("Live", DarkLookAndFeel::panel(), new LivePanel (audioEngine), true);
     playlistPanel = new PlaylistPanel (audioEngine);
     tabs.addTab ("Playlist", DarkLookAndFeel::panel(), playlistPanel, true);
+    tabs.addTab ("Layers", DarkLookAndFeel::panel(), new LayersPanel (audioEngine), true);
     tabs.addTab ("Audio", DarkLookAndFeel::panel(),
                  new AudioSettingsPanel (deviceManager, audioEngine), true);
     tabs.addTab ("MIDI", DarkLookAndFeel::panel(), new MidiPanel (*midiManager), true);
@@ -229,6 +246,43 @@ MainComponent::MainComponent()
     setSize (1180, 820);
 
    #if JUCE_DEBUG
+    const auto screenshotPath = juce::SystemStats::getEnvironmentVariable ("PANLOOP_SCREENSHOT", {});
+
+    if (screenshotPath.isNotEmpty())
+    {
+        const auto tabText = juce::SystemStats::getEnvironmentVariable ("PANLOOP_SCREENSHOT_TAB", "0");
+        const auto tabIndex = tabText.getIntValue();
+
+        if (tabIndex >= 0 && tabIndex < tabs.getNumTabs())
+            tabs.setCurrentTabIndex (tabIndex);
+
+        const auto delayText = juce::SystemStats::getEnvironmentVariable ("PANLOOP_SCREENSHOT_DELAY_MS", "3000");
+        const auto screenshotDelay = juce::jlimit (100, 60000, delayText.getIntValue());
+
+        juce::Component::SafePointer<MainComponent> safeThis (this);
+
+        juce::Timer::callAfterDelay (screenshotDelay, [safeThis, screenshotPath]
+        {
+            if (safeThis == nullptr)
+                return;
+
+            auto image = safeThis->createComponentSnapshot (safeThis->getLocalBounds());
+
+            if (image.isValid())
+            {
+                auto file = juce::File (screenshotPath);
+                file.deleteFile();
+
+                if (auto stream = file.createOutputStream())
+                {
+                    juce::PNGImageFormat png;
+                    png.writeImageToStream (image, *stream);
+                    juce::Logger::writeToLog ("Saved screenshot: " + file.getFullPathName());
+                }
+            }
+        });
+    }
+
     const auto testPlaylist = juce::SystemStats::getEnvironmentVariable ("PANLOOP_TEST_PLAYLIST", {});
 
     if (testPlaylist.isNotEmpty())
@@ -266,6 +320,65 @@ MainComponent::MainComponent()
 
             safeThis->audioEngine.getTransport().play();
         });
+    }
+
+    if (juce::SystemStats::getEnvironmentVariable ("PANLOOP_TEST_LOOP", {}) == "1")
+    {
+        juce::Component::SafePointer<MainComponent> safeThis (this);
+
+        if (juce::SystemStats::getEnvironmentVariable ("PANLOOP_TEST_LOOP_SNAP", {}) == "1")
+            audioEngine.setBarSnapEnabled (true);
+
+        juce::Timer::callAfterDelay (3000, [safeThis]
+        {
+            if (safeThis != nullptr)
+                safeThis->audioEngine.record();
+        });
+
+        juce::Timer::callAfterDelay (5000, [safeThis]
+        {
+            if (safeThis != nullptr)
+                safeThis->audioEngine.stopRecording();
+        });
+
+        juce::Timer::callAfterDelay (6000, [safeThis]
+        {
+            if (safeThis != nullptr)
+                safeThis->audioEngine.record();
+        });
+
+        juce::Timer::callAfterDelay (8500, [safeThis]
+        {
+            if (safeThis != nullptr)
+                safeThis->audioEngine.stopRecording();
+        });
+
+        juce::Timer::callAfterDelay (9500, [safeThis]
+        {
+            if (safeThis != nullptr)
+                safeThis->audioEngine.record();
+        });
+
+        juce::Timer::callAfterDelay (10500, [safeThis]
+        {
+            if (safeThis != nullptr)
+                safeThis->audioEngine.discardLiveLayer();
+        });
+
+        if (juce::SystemStats::getEnvironmentVariable ("PANLOOP_TEST_LOOP_EXTRA", {}) == "1")
+        {
+            juce::Timer::callAfterDelay (11500, [safeThis]
+            {
+                if (safeThis != nullptr)
+                    safeThis->audioEngine.discardLiveLayer();
+            });
+
+            juce::Timer::callAfterDelay (13000, [safeThis]
+            {
+                if (safeThis != nullptr)
+                    safeThis->audioEngine.clearLiveLayers();
+            });
+        }
     }
    #endif
 }

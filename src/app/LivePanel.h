@@ -23,10 +23,14 @@ private:
 
     void togglePlayPause();
     void stopTransport();
+    void startRecording();
+    void stopRecording();
+    void discardLayer();
     void updateBpm();
     void updateTimeSignature();
     void tapTempo();
     void updateControls();
+    void updateLiveControls();
 
     static juce::String formatTime (double seconds);
 
@@ -61,6 +65,7 @@ private:
 
     juce::Label loopTitleLabel;
     juce::Label loopHintLabel;
+    juce::ToggleButton barSnapToggle { "Snap first loop to bar" };
     juce::TextButton recordButton { "Record" };
     juce::TextButton stopRecButton { "Stop Rec" };
     juce::TextButton discardButton { "Discard" };

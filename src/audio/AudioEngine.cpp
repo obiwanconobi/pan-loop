@@ -10,6 +10,11 @@ namespace
     constexpr auto testToneLevel = 0.1f; // -20 dBFS
 }
 
+AudioEngine::AudioEngine()
+    : liveLooper (transport)
+{
+}
+
 void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
 {
     if (device == nullptr)
@@ -43,6 +48,11 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
             playlist.clear();
         }
 
+        if (liveLooper.hasLayers())
+            juce::Logger::writeToLog ("Sample rate changed; clearing live loop layers");
+
+        liveLooper.reset();
+
         transport.prepare (sampleRate);
         metronome.prepare (sampleRate);
 
@@ -57,7 +67,7 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
     else
     {
         // A JACK port or buffer change can restart the device. Keep the transport
-        // running and only clear the click tail.
+        // and live layers running and only clear the click tail.
         metronome.reset();
     }
 
@@ -66,6 +76,9 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
 
     inputLatencySamples.store (device->getInputLatencyInSamples(), std::memory_order_relaxed);
     outputLatencySamples.store (device->getOutputLatencyInSamples(), std::memory_order_relaxed);
+
+    liveLooper.prepare (sampleRate);
+    updateLiveLatency();
 
     juce::Logger::writeToLog ("Audio device started: " + device->getName()
                               + " | " + juce::String (sampleRate, 1) + " Hz | "
@@ -136,6 +149,14 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
 
     if (transportPlaying)
         playlist.addTo (mixBuffer, 0, numSamples, transportPositionSamples);
+
+    const auto liveResult = liveLooper.processBlock (mixBuffer,
+                                                     inputChannelData,
+                                                     numInputChannels,
+                                                     numSamples,
+                                                     transportPositionSamples,
+                                                     cycleLengthSamples,
+                                                     transportPlaying);
 
     if (samplesPerBeat > 0.0
         && std::abs (samplesPerBeat - lastSamplesPerBeat) > 1.0e-6)
@@ -263,7 +284,19 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     inputLevel.store (inputPeak, std::memory_order_relaxed);
     outputLevel.store (outputPeak, std::memory_order_relaxed);
 
-    transport.advance (numSamples);
+    if (liveResult == LiveLooper::ProcessResult::ResetTransport)
+    {
+        transport.setPositionSamples (0);
+    }
+    else if (liveResult == LiveLooper::ProcessResult::StopTransport)
+    {
+        transport.stop();
+        transport.setCycleLengthSamples (0);
+    }
+    else
+    {
+        transport.advance (numSamples);
+    }
 
     if (clipped)
         clipIndicator.store (true, std::memory_order_relaxed);
@@ -277,11 +310,179 @@ void AudioEngine::audioDeviceError (const juce::String& errorMessage)
 void AudioEngine::playlistChanged()
 {
     const auto totalLength = playlist.getTotalLengthSamples();
-    transport.setCycleLengthSamples (totalLength);
+
+    if (totalLength > 0)
+    {
+        if (liveLooper.hasLayers() && transport.getCycleLengthSamples() > 0)
+        {
+            juce::Logger::writeToLog ("Playlist cycle change ignored while live layers exist");
+            return;
+        }
+
+        transport.setCycleLengthSamples (totalLength);
+    }
+    else if (! liveLooper.hasLayers())
+    {
+        transport.setCycleLengthSamples (0);
+    }
 
     juce::Logger::writeToLog ("Playlist changed: "
                               + juce::String (totalLength) + " samples, cycle "
                               + juce::String (transport.getCycleLengthSamples()) + " samples");
+}
+
+void AudioEngine::record()
+{
+    if (liveLooper.isRecordingOrArmed())
+        return;
+
+    const auto sampleRate = getCurrentSampleRate();
+
+    if (sampleRate <= 0.0)
+    {
+        juce::Logger::writeToLog ("Record ignored: no audio device");
+        return;
+    }
+
+    auto cycleLength = transport.getCycleLengthSamples();
+
+    if (cycleLength <= 0 && ! playlist.isEmpty())
+    {
+        cycleLength = playlist.getTotalLengthSamples();
+
+        if (cycleLength > 0)
+            transport.setCycleLengthSamples (cycleLength);
+    }
+
+    if (cycleLength > 0)
+    {
+        const auto startImmediately = ! transport.isPlaying();
+
+        if (startImmediately)
+        {
+            liveLooper.startOverdub (cycleLength, sampleRate, true);
+            juce::Logger::writeToLog ("Live overdub recording started immediately, cycle "
+                                      + juce::String (cycleLength) + " samples");
+
+            if (liveLooper.isRecording())
+            {
+                transport.setPositionSamples (0);
+                transport.play();
+            }
+        }
+        else
+        {
+            liveLooper.startOverdub (cycleLength, sampleRate, false);
+            juce::Logger::writeToLog ("Live overdub armed for next cycle, cycle "
+                                      + juce::String (cycleLength) + " samples");
+        }
+    }
+    else
+    {
+        liveLooper.startFirstLoop (sampleRate);
+        juce::Logger::writeToLog ("Live first-loop recording started");
+
+        if (liveLooper.isRecording())
+        {
+            transport.stop();
+            transport.setCycleLengthSamples (0);
+            transport.play();
+        }
+    }
+}
+
+void AudioEngine::stopRecording()
+{
+    juce::Logger::writeToLog ("Live recording stop requested");
+    liveLooper.stopRecording();
+}
+
+void AudioEngine::discardLiveLayer()
+{
+    juce::Logger::writeToLog ("Live layer discard requested");
+
+    if (! liveLooper.discard())
+        return;
+
+    if (playlist.isEmpty() && ! liveLooper.hasLayers())
+    {
+        transport.stop();
+        transport.setCycleLengthSamples (0);
+    }
+}
+
+void AudioEngine::clearLiveLayers()
+{
+    liveLooper.clearLayers();
+
+    if (playlist.isEmpty())
+    {
+        transport.stop();
+        transport.setCycleLengthSamples (0);
+    }
+}
+
+bool AudioEngine::removeLiveLayer (int layerId)
+{
+    if (! liveLooper.removeLayer (layerId))
+        return false;
+
+    if (playlist.isEmpty() && ! liveLooper.hasLayers())
+    {
+        transport.stop();
+        transport.setCycleLengthSamples (0);
+    }
+
+    return true;
+}
+
+bool AudioEngine::hasLiveLayers() const
+{
+    return liveLooper.hasLayers();
+}
+
+void AudioEngine::setBarSnapEnabled (bool shouldSnap)
+{
+    liveLooper.setBarSnapEnabled (shouldSnap);
+}
+
+bool AudioEngine::isBarSnapEnabled() const
+{
+    return liveLooper.isBarSnapEnabled();
+}
+
+void AudioEngine::setLatencyOffsetMs (float milliseconds)
+{
+    latencyOffsetMs.store (juce::jlimit (-200.0f, 200.0f, milliseconds),
+                           std::memory_order_relaxed);
+    updateLiveLatency();
+}
+
+float AudioEngine::getLatencyOffsetMs() const noexcept
+{
+    return latencyOffsetMs.load (std::memory_order_relaxed);
+}
+
+int AudioEngine::getRecordingLatencySamples() const noexcept
+{
+    const auto sampleRate = getCurrentSampleRate();
+
+    if (sampleRate <= 0.0)
+        return 0;
+
+    const auto offsetSamples = static_cast<int> (
+        std::llround (latencyOffsetMs.load (std::memory_order_relaxed)
+                      * static_cast<float> (sampleRate) / 1000.0f));
+
+    return juce::jmax (0,
+                       inputLatencySamples.load (std::memory_order_relaxed)
+                       + outputLatencySamples.load (std::memory_order_relaxed)
+                       + offsetSamples);
+}
+
+void AudioEngine::updateLiveLatency() noexcept
+{
+    liveLooper.setLatencySamples (getRecordingLatencySamples());
 }
 
 void AudioEngine::setInputGainDb (float db) noexcept

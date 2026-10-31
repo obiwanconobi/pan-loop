@@ -318,6 +318,14 @@ void PlaylistPanel::filesDropped (const juce::StringArray& files, int, int)
         return;
     }
 
+    if (engine.hasLiveLayers())
+    {
+        statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::armed());
+        statusLabel.setText ("Clear live layers before changing the playlist.",
+                             juce::dontSendNotification);
+        return;
+    }
+
     juce::Array<juce::File> dropped;
 
     for (const auto& path : files)
@@ -359,6 +367,14 @@ void PlaylistPanel::chooseFiles()
     {
         statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::armed());
         statusLabel.setText ("Stop the transport before adding or reordering files.",
+                             juce::dontSendNotification);
+        return;
+    }
+
+    if (engine.hasLiveLayers())
+    {
+        statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::armed());
+        statusLabel.setText ("Clear live layers before changing the playlist.",
                              juce::dontSendNotification);
         return;
     }
@@ -412,6 +428,14 @@ void PlaylistPanel::beginLoading (const juce::Array<juce::File>& files)
     {
         statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::armed());
         statusLabel.setText ("Stop the transport before adding files.",
+                             juce::dontSendNotification);
+        return;
+    }
+
+    if (engine.hasLiveLayers())
+    {
+        statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::armed());
+        statusLabel.setText ("Clear live layers before changing the playlist.",
                              juce::dontSendNotification);
         return;
     }
@@ -551,7 +575,10 @@ void PlaylistPanel::refreshSnapshot()
 
 void PlaylistPanel::updateButtons()
 {
-    const auto canEdit = engine.getTransport().isStopped() && ! loading && ! chooserOpen;
+    const auto canEdit = engine.getTransport().isStopped()
+                      && ! loading
+                      && ! chooserOpen
+                      && ! engine.hasLiveLayers();
     const auto count = static_cast<int> (snapshot.items.size());
 
     addButton.setEnabled (canEdit);

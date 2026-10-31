@@ -39,7 +39,7 @@ LivePanel::LivePanel (AudioEngine& audioEngine)
     styleLabel (metroLevelLabel, 13.0f);
 
     titleLabel.setText ("Live", juce::dontSendNotification);
-    subtitleLabel.setText ("Transport and metronome foundation",
+    subtitleLabel.setText ("Transport, metronome and live loop layers",
                            juce::dontSendNotification);
     subtitleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
@@ -57,12 +57,12 @@ LivePanel::LivePanel (AudioEngine& audioEngine)
     cycleLabel.setText ("Cycle: free-running", juce::dontSendNotification);
     cycleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    transportHintLabel.setText ("Space: play/pause   |   S: stop and rewind",
+    transportHintLabel.setText ("Space: play/pause   |   S: stop   |   R: record   |   T: stop rec   |   D: discard",
                                 juce::dontSendNotification);
     transportHintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
     loopTitleLabel.setText ("Loop layers", juce::dontSendNotification);
-    loopHintLabel.setText ("Record, Stop Rec and Discard will be enabled in Phase 4.",
+    loopHintLabel.setText ("No live layers yet. Record starts the first loop.",
                            juce::dontSendNotification);
     loopHintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
@@ -119,19 +119,27 @@ LivePanel::LivePanel (AudioEngine& audioEngine)
         engine.getMetronome().setLevel (static_cast<float> (metroLevelSlider.getValue() / 100.0));
     };
 
-    for (auto* button : { &recordButton, &stopRecButton, &discardButton })
-        button->setEnabled (false);
-
-    recordButton.setTooltip ("Available in Phase 4");
-    stopRecButton.setTooltip ("Available in Phase 4");
-    discardButton.setTooltip ("Available in Phase 4");
+    recordButton.setTooltip ("Start recording a new loop layer (R)");
+    stopRecButton.setTooltip ("Stop recording and keep the take (T)");
+    discardButton.setTooltip ("Discard the current take or most recent layer (D)");
 
     recordButton.setColour (juce::TextButton::buttonColourId,
-                            DarkLookAndFeel::recording().withAlpha (0.12f));
+                            DarkLookAndFeel::recording().withAlpha (0.18f));
     stopRecButton.setColour (juce::TextButton::buttonColourId,
-                             DarkLookAndFeel::armed().withAlpha (0.12f));
+                             DarkLookAndFeel::armed().withAlpha (0.18f));
     discardButton.setColour (juce::TextButton::buttonColourId,
-                             DarkLookAndFeel::mutedText().withAlpha (0.12f));
+                             DarkLookAndFeel::mutedText().withAlpha (0.18f));
+
+    recordButton.onClick = [this] { startRecording(); };
+    stopRecButton.onClick = [this] { stopRecording(); };
+    discardButton.onClick = [this] { discardLayer(); };
+
+    barSnapToggle.setTooltip ("Snap the first loop length to the nearest bar");
+    barSnapToggle.setToggleState (engine.isBarSnapEnabled(), juce::dontSendNotification);
+    barSnapToggle.onClick = [this]
+    {
+        engine.setBarSnapEnabled (barSnapToggle.getToggleState());
+    };
 
     addAndMakeVisible (titleLabel);
     addAndMakeVisible (subtitleLabel);
@@ -153,6 +161,7 @@ LivePanel::LivePanel (AudioEngine& audioEngine)
     addAndMakeVisible (metroLevelSlider);
     addAndMakeVisible (loopTitleLabel);
     addAndMakeVisible (loopHintLabel);
+    addAndMakeVisible (barSnapToggle);
     addAndMakeVisible (recordButton);
     addAndMakeVisible (stopRecButton);
     addAndMakeVisible (discardButton);
@@ -241,9 +250,9 @@ void LivePanel::resized()
     stateLabel.setBounds (header.removeFromRight (380));
 
     area.removeFromTop (12);
-    transportCard = area.removeFromTop (360);
+    transportCard = area.removeFromTop (330);
     area.removeFromTop (16);
-    loopCard = area.removeFromTop (140);
+    loopCard = area.removeFromTop (170);
 
     {
         auto inner = transportCard.reduced (24, 18);
@@ -287,26 +296,55 @@ void LivePanel::resized()
         auto inner = loopCard.reduced (24, 18);
         loopTitleLabel.setBounds (inner.removeFromTop (26));
         loopHintLabel.setBounds (inner.removeFromTop (20));
-        inner.removeFromTop (10);
+        inner.removeFromTop (8);
 
         auto buttons = inner.removeFromTop (44);
         recordButton.setBounds (buttons.removeFromLeft (170).reduced (6));
         stopRecButton.setBounds (buttons.removeFromLeft (170).reduced (6));
         discardButton.setBounds (buttons.removeFromLeft (170).reduced (6));
+
+        inner.removeFromTop (8);
+        barSnapToggle.setBounds (inner.removeFromTop (28).removeFromLeft (260));
     }
 }
 
 bool LivePanel::keyPressed (const juce::KeyPress& key)
 {
+    const auto liveBusy = engine.getLiveLooper().isRecordingOrArmed();
+
     if (key.getKeyCode() == juce::KeyPress::spaceKey)
     {
-        togglePlayPause();
+        if (! liveBusy)
+            togglePlayPause();
+
         return true;
     }
 
-    if (key.getTextCharacter() == 's' || key.getTextCharacter() == 'S')
+    const auto character = key.getTextCharacter();
+
+    if (character == 's' || character == 'S')
     {
-        stopTransport();
+        if (! liveBusy)
+            stopTransport();
+
+        return true;
+    }
+
+    if (character == 'r' || character == 'R')
+    {
+        startRecording();
+        return true;
+    }
+
+    if (character == 't' || character == 'T')
+    {
+        stopRecording();
+        return true;
+    }
+
+    if (character == 'd' || character == 'D')
+    {
+        discardLayer();
         return true;
     }
 
@@ -341,6 +379,24 @@ void LivePanel::togglePlayPause()
 void LivePanel::stopTransport()
 {
     engine.getTransport().stop();
+    updateControls();
+}
+
+void LivePanel::startRecording()
+{
+    engine.record();
+    updateControls();
+}
+
+void LivePanel::stopRecording()
+{
+    engine.stopRecording();
+    updateControls();
+}
+
+void LivePanel::discardLayer()
+{
+    engine.discardLiveLayer();
     updateControls();
 }
 
@@ -464,7 +520,76 @@ void LivePanel::updateControls()
         cycleLabel.setText ("Cycle: free-running", juce::dontSendNotification);
     }
 
+    updateLiveControls();
     repaint (beatIndicatorArea.getUnion (barProgressArea));
+}
+
+void LivePanel::updateLiveControls()
+{
+    const auto& looper = engine.getLiveLooper();
+    const auto snapshot = looper.getSnapshot();
+    const auto armed = looper.isArmed();
+    const auto recording = looper.isRecording();
+    const auto liveBusy = armed || recording;
+    const auto layerCount = static_cast<int> (snapshot.layers.size());
+
+    playPauseButton.setEnabled (! liveBusy);
+    stopButton.setEnabled (! liveBusy);
+    bpmSlider.setEnabled (! liveBusy);
+    timeSigBox.setEnabled (! liveBusy);
+    tapButton.setEnabled (! liveBusy);
+    barSnapToggle.setEnabled (! liveBusy);
+
+    recordButton.setEnabled (! liveBusy && engine.getCurrentSampleRate() > 0.0);
+    stopRecButton.setEnabled (liveBusy);
+    discardButton.setEnabled (liveBusy || layerCount > 0);
+
+    if (barSnapToggle.getToggleState() != engine.isBarSnapEnabled())
+        barSnapToggle.setToggleState (engine.isBarSnapEnabled(), juce::dontSendNotification);
+
+    juce::String status;
+    auto colour = DarkLookAndFeel::mutedText();
+
+    if (armed)
+    {
+        status = "ARMED - recording starts at the next cycle.";
+        colour = DarkLookAndFeel::armed();
+    }
+    else if (recording)
+    {
+        juce::String currentName = "layer";
+
+        for (const auto& layer : snapshot.layers)
+            if (layer.id == snapshot.recordingLayerId)
+                currentName = layer.name;
+
+        status = "RECORDING " + currentName;
+
+        if (engine.getTransport().getCycleLengthSamples() <= 0)
+            status << " - first loop; press Stop Rec to close it.";
+        else
+            status << " - auto-stops at the loop boundary.";
+
+        colour = DarkLookAndFeel::recording();
+    }
+    else if (layerCount == 0)
+    {
+        status = "No live layers yet. Record starts the first loop.";
+        colour = DarkLookAndFeel::mutedText();
+    }
+    else if (! engine.getTransport().isPlaying())
+    {
+        status = juce::String (layerCount) + " layer(s) ready. Press Play to hear them.";
+        colour = DarkLookAndFeel::text();
+    }
+    else
+    {
+        status = juce::String (layerCount) + " layer(s) playing. Record adds another layer.";
+        colour = DarkLookAndFeel::playing();
+    }
+
+    loopHintLabel.setText (status, juce::dontSendNotification);
+    loopHintLabel.setColour (juce::Label::textColourId, colour);
 }
 
 juce::String LivePanel::formatTime (double seconds)

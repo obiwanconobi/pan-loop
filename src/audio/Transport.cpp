@@ -78,6 +78,17 @@ juce::int64 Transport::getCycleLengthSamples() const noexcept
     return cycleLengthSamples.load (std::memory_order_relaxed);
 }
 
+void Transport::setPositionSamples (juce::int64 newPosition) noexcept
+{
+    auto position = juce::jmax (static_cast<juce::int64> (0), newPosition);
+    const auto cycleLength = cycleLengthSamples.load (std::memory_order_relaxed);
+
+    if (cycleLength > 0)
+        position %= cycleLength;
+
+    positionSamples.store (position, std::memory_order_relaxed);
+}
+
 void Transport::advance (int numSamples) noexcept
 {
     if (numSamples <= 0 || ! isPlaying())

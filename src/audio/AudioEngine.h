@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 #include <atomic>
 
+#include "LiveLooper.h"
 #include "Metronome.h"
 #include "Playlist.h"
 #include "Transport.h"
@@ -17,7 +18,7 @@
 class AudioEngine final : public juce::AudioIODeviceCallback
 {
 public:
-    AudioEngine() = default;
+    AudioEngine();
     ~AudioEngine() override = default;
 
     //==========================================================================
@@ -55,17 +56,37 @@ public:
     const Metronome& getMetronome() const noexcept  { return metronome; }
     Playlist& getPlaylist() noexcept                { return playlist; }
     const Playlist& getPlaylist() const noexcept    { return playlist; }
+    LiveLooper& getLiveLooper() noexcept            { return liveLooper; }
+    const LiveLooper& getLiveLooper() const noexcept { return liveLooper; }
 
     /** Recomputes the transport cycle after a playlist edit. Message thread only. */
     void playlistChanged();
+
+    // Live-loop transport commands, called from the message thread.
+    void record();
+    void stopRecording();
+    void discardLiveLayer();
+    void clearLiveLayers();
+    bool removeLiveLayer (int layerId);
+    bool hasLiveLayers() const;
+
+    void setBarSnapEnabled (bool shouldSnap);
+    bool isBarSnapEnabled() const;
+
+    void setLatencyOffsetMs (float milliseconds);
+    float getLatencyOffsetMs() const noexcept;
+    int getRecordingLatencySamples() const noexcept;
 
     bool hasClipped() const noexcept;
     void resetClipIndicator() noexcept;
 
 private:
+    void updateLiveLatency() noexcept;
+
     Transport transport;
     Metronome metronome;
     Playlist playlist;
+    LiveLooper liveLooper;
     juce::AudioBuffer<float> mixBuffer;
 
     Transport::State lastTransportState = Transport::State::Stopped;
@@ -77,6 +98,7 @@ private:
 
     std::atomic<int> inputLatencySamples { 0 };
     std::atomic<int> outputLatencySamples { 0 };
+    std::atomic<float> latencyOffsetMs { 0.0f };
 
     std::atomic<float> inputGainLinear { 1.0f };
     std::atomic<float> outputGainLinear { 1.0f };

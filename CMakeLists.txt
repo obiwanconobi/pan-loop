@@ -38,6 +38,8 @@ target_sources(pan-loop PRIVATE
     src/Main.cpp
     src/app/DarkLookAndFeel.cpp
     src/app/DarkLookAndFeel.h
+    src/app/LayersPanel.cpp
+    src/app/LayersPanel.h
     src/app/LivePanel.cpp
     src/app/LivePanel.h
     src/app/MainComponent.cpp
@@ -52,6 +54,8 @@ target_sources(pan-loop PRIVATE
     src/audio/AudioSettingsPanel.h
     src/audio/AudioSetup.cpp
     src/audio/AudioSetup.h
+    src/audio/LiveLooper.cpp
+    src/audio/LiveLooper.h
     src/audio/Metronome.cpp
     src/audio/Metronome.h
     src/audio/Playlist.cpp

@@ -55,8 +55,10 @@ private:
 
     juce::Label inputGainLabel;
     juce::Label outputGainLabel;
+    juce::Label latencyOffsetLabel;
     juce::Slider inputGainSlider;
     juce::Slider outputGainSlider;
+    juce::Slider latencyOffsetSlider;
 
     juce::Label inputMeterLabel;
     juce::Label outputMeterLabel;

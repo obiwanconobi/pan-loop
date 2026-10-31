@@ -38,6 +38,9 @@ public:
     void setCycleLengthSamples (juce::int64 newLength) noexcept;
     juce::int64 getCycleLengthSamples() const noexcept;
 
+    /** Moves the transport playhead. Used when finalizing the first loop. */
+    void setPositionSamples (juce::int64 newPosition) noexcept;
+
     /** Called by the audio thread once per block. */
     void advance (int numSamples) noexcept;
 

@@ -62,8 +62,10 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
     addAndMakeVisible (testToneButton);
     addAndMakeVisible (inputGainLabel);
     addAndMakeVisible (outputGainLabel);
+    addAndMakeVisible (latencyOffsetLabel);
     addAndMakeVisible (inputGainSlider);
     addAndMakeVisible (outputGainSlider);
+    addAndMakeVisible (latencyOffsetSlider);
     addAndMakeVisible (inputMeterLabel);
     addAndMakeVisible (outputMeterLabel);
 
@@ -72,11 +74,13 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
 
     styleLabel (inputGainLabel, 13.0f);
     styleLabel (outputGainLabel, 13.0f);
+    styleLabel (latencyOffsetLabel, 13.0f);
     styleLabel (inputMeterLabel, 12.0f);
     styleLabel (outputMeterLabel, 12.0f);
 
     inputGainLabel.setText ("Input gain", juce::dontSendNotification);
     outputGainLabel.setText ("Output gain", juce::dontSendNotification);
+    latencyOffsetLabel.setText ("Record offset", juce::dontSendNotification);
     inputMeterLabel.setText ("IN", juce::dontSendNotification);
     outputMeterLabel.setText ("OUT", juce::dontSendNotification);
 
@@ -89,6 +93,14 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
         slider->setTextValueSuffix (" dB");
         slider->setColour (juce::Slider::textBoxTextColourId, DarkLookAndFeel::text());
     }
+
+    latencyOffsetSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    latencyOffsetSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 70, 22);
+    latencyOffsetSlider.setRange (-100.0, 100.0, 1.0);
+    latencyOffsetSlider.setValue (engine.getLatencyOffsetMs(), juce::dontSendNotification);
+    latencyOffsetSlider.setTextValueSuffix (" ms");
+    latencyOffsetSlider.setTooltip ("Positive values compensate for more recording latency; negative for less.");
+    latencyOffsetSlider.setColour (juce::Slider::textBoxTextColourId, DarkLookAndFeel::text());
 
     monitorButton.setToggleState (true, juce::dontSendNotification);
     engine.setMonitoringEnabled (true);
@@ -162,6 +174,11 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
         engine.setOutputGainDb (static_cast<float> (outputGainSlider.getValue()));
     };
 
+    latencyOffsetSlider.onValueChange = [this]
+    {
+        engine.setLatencyOffsetMs (static_cast<float> (latencyOffsetSlider.getValue()));
+    };
+
     rebuildBackendList();
     rebuildDeviceLists();
     updateStatus();
@@ -175,7 +192,7 @@ void AudioSettingsPanel::resized()
 
     deviceGroup.setBounds (area.removeFromTop (252));
     area.removeFromTop (14);
-    mixGroup.setBounds (area.removeFromTop (240));
+    mixGroup.setBounds (area.removeFromTop (270));
     area.removeFromTop (10);
     errorLabel.setBounds (area.removeFromTop (30));
 
@@ -231,6 +248,11 @@ void AudioSettingsPanel::resized()
         row = controls.removeFromTop (32);
         outputGainLabel.setBounds (row.removeFromLeft (90));
         outputGainSlider.setBounds (row.removeFromLeft (juce::jmin (360, row.getWidth())));
+
+        controls.removeFromTop (8);
+        row = controls.removeFromTop (32);
+        latencyOffsetLabel.setBounds (row.removeFromLeft (90));
+        latencyOffsetSlider.setBounds (row.removeFromLeft (juce::jmin (360, row.getWidth())));
 
         inputMeterLabel.setBounds (meters.removeFromTop (20));
         inputMeter.setBounds (meters.removeFromTop (24));
