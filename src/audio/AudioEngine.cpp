@@ -37,10 +37,17 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
 
     if (rateChanged)
     {
+        if (! playlist.isEmpty())
+        {
+            juce::Logger::writeToLog ("Sample rate changed; clearing backing playlist");
+            playlist.clear();
+        }
+
         transport.prepare (sampleRate);
         metronome.prepare (sampleRate);
 
         lastTransportState = Transport::State::Stopped;
+        lastTransportPositionSamples = 0;
         nextBeatPosition = 0.0;
         lastSamplesPerBeat = 0.0;
 
@@ -53,6 +60,9 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
         // running and only clear the click tail.
         metronome.reset();
     }
+
+    mixBuffer.setSize (2, juce::jmax (8192, device->getCurrentBufferSizeSamples() * 2),
+                       false, true, false);
 
     inputLatencySamples.store (device->getInputLatencyInSamples(), std::memory_order_relaxed);
     outputLatencySamples.store (device->getOutputLatencyInSamples(), std::memory_order_relaxed);
@@ -96,6 +106,14 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     if (sampleRate <= 0.0 || numSamples <= 0)
         return;
 
+    if (numSamples > mixBuffer.getNumSamples())
+    {
+        jassertfalse;
+        return;
+    }
+
+    mixBuffer.clear (0, numSamples);
+
     const auto monitor = monitoringEnabled.load (std::memory_order_relaxed);
     const auto toneOn = testToneEnabled.load (std::memory_order_relaxed);
     const auto toneFrequency = testToneFrequency.load (std::memory_order_relaxed);
@@ -110,9 +128,14 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
 
     const auto transportState = transport.getState();
     const auto transportPlaying = transportState == Transport::State::Playing;
-    const auto transportPosition = static_cast<double> (transport.getPositionSamples());
+    const auto transportPositionSamples = transport.getPositionSamples();
+    const auto transportPosition = static_cast<double> (transportPositionSamples);
     const auto samplesPerBeat = transport.getSamplesPerBeat();
     const auto beatsPerBar = juce::jmax (1, transport.getTimeSignatureNumerator());
+    const auto cycleLengthSamples = transport.getCycleLengthSamples();
+
+    if (transportPlaying)
+        playlist.addTo (mixBuffer, 0, numSamples, transportPositionSamples);
 
     if (samplesPerBeat > 0.0
         && std::abs (samplesPerBeat - lastSamplesPerBeat) > 1.0e-6)
@@ -122,6 +145,14 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
                              ? std::ceil (transportPosition / samplesPerBeat) * samplesPerBeat
                              : transportPosition;
     }
+
+    // The metronome schedule is based on the transport sample position. After a
+    // playlist cycle wrap the position jumps back to zero, so restart the click
+    // schedule at the wrapped position.
+    if (cycleLengthSamples > 0 && transportPositionSamples < lastTransportPositionSamples)
+        nextBeatPosition = transportPosition;
+
+    lastTransportPositionSamples = transportPositionSamples;
 
     if (transportPlaying && lastTransportState != Transport::State::Playing
         && samplesPerBeat > 0.0)
@@ -195,8 +226,8 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
         const auto outputGain = outputGainSmoother.getNextValue();
         const auto toneGain = testToneGainSmoother.getNextValue();
 
-        auto mixL = inL * inputGain * monitorGain;
-        auto mixR = inR * inputGain * monitorGain;
+        auto mixL = mixBuffer.getSample (0, i) + inL * inputGain * monitorGain;
+        auto mixR = mixBuffer.getSample (1, i) + inR * inputGain * monitorGain;
 
         if (toneGain > 0.0f)
         {
@@ -241,6 +272,16 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
 void AudioEngine::audioDeviceError (const juce::String& errorMessage)
 {
     juce::Logger::writeToLog ("Audio device error: " + errorMessage);
+}
+
+void AudioEngine::playlistChanged()
+{
+    const auto totalLength = playlist.getTotalLengthSamples();
+    transport.setCycleLengthSamples (totalLength);
+
+    juce::Logger::writeToLog ("Playlist changed: "
+                              + juce::String (totalLength) + " samples, cycle "
+                              + juce::String (transport.getCycleLengthSamples()) + " samples");
 }
 
 void AudioEngine::setInputGainDb (float db) noexcept

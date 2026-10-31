@@ -24,6 +24,7 @@ private:
 
     juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
     juce::TooltipWindow tooltipWindow { this, 700 };
+    class PlaylistPanel* playlistPanel = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

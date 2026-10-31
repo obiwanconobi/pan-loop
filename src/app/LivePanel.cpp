@@ -30,6 +30,7 @@ LivePanel::LivePanel (AudioEngine& audioEngine)
     styleLabel (barBeatLabel, 46.0f, true);
     styleLabel (timeLabel, 14.0f);
     styleLabel (latencyLabel, 12.0f);
+    styleLabel (cycleLabel, 12.0f);
     styleLabel (transportHintLabel, 12.0f);
     styleLabel (loopTitleLabel, 18.0f, true);
     styleLabel (loopHintLabel, 13.0f);
@@ -52,6 +53,9 @@ LivePanel::LivePanel (AudioEngine& audioEngine)
 
     latencyLabel.setText ("Round-trip latency: 0.0 ms", juce::dontSendNotification);
     latencyLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+
+    cycleLabel.setText ("Cycle: free-running", juce::dontSendNotification);
+    cycleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
     transportHintLabel.setText ("Space: play/pause   |   S: stop and rewind",
                                 juce::dontSendNotification);
@@ -135,6 +139,7 @@ LivePanel::LivePanel (AudioEngine& audioEngine)
     addAndMakeVisible (barBeatLabel);
     addAndMakeVisible (timeLabel);
     addAndMakeVisible (latencyLabel);
+    addAndMakeVisible (cycleLabel);
     addAndMakeVisible (transportHintLabel);
     addAndMakeVisible (playPauseButton);
     addAndMakeVisible (stopButton);
@@ -273,7 +278,8 @@ void LivePanel::resized()
 
         inner.removeFromTop (18);
         auto bottom = inner.removeFromTop (24);
-        latencyLabel.setBounds (bottom.removeFromLeft (320));
+        latencyLabel.setBounds (bottom.removeFromLeft (260));
+        cycleLabel.setBounds (bottom.removeFromLeft (230));
         transportHintLabel.setBounds (bottom);
     }
 
@@ -444,15 +450,36 @@ void LivePanel::updateControls()
                               + juce::String (engine.getRoundTripLatencyMs(), 1) + " ms",
                           juce::dontSendNotification);
 
+    if (info.cycleLengthSamples > 0)
+    {
+        const auto sampleRate = engine.getCurrentSampleRate();
+        const auto cycleSeconds = sampleRate > 0.0
+                                    ? static_cast<double> (info.cycleLengthSamples) / sampleRate
+                                    : 0.0;
+        cycleLabel.setText ("Cycle: " + formatTime (cycleSeconds),
+                            juce::dontSendNotification);
+    }
+    else
+    {
+        cycleLabel.setText ("Cycle: free-running", juce::dontSendNotification);
+    }
+
     repaint (beatIndicatorArea.getUnion (barProgressArea));
 }
 
 juce::String LivePanel::formatTime (double seconds)
 {
     const auto totalMs = static_cast<juce::int64> (std::llround (juce::jmax (0.0, seconds) * 1000.0));
-    const auto minutes = totalMs / 60000;
+    const auto hours = totalMs / 3600000;
+    const auto minutes = (totalMs / 60000) % 60;
     const auto secs = (totalMs / 1000) % 60;
     const auto ms = totalMs % 1000;
+
+    if (hours > 0)
+        return juce::String (hours) + ":"
+             + juce::String (minutes).paddedLeft ('0', 2) + ":"
+             + juce::String (secs).paddedLeft ('0', 2)
+             + "." + juce::String (ms).paddedLeft ('0', 3);
 
     return juce::String (minutes).paddedLeft ('0', 2)
          + ":" + juce::String (secs).paddedLeft ('0', 2)

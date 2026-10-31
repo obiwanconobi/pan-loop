@@ -42,14 +42,20 @@ target_sources(pan-loop PRIVATE
     src/app/LivePanel.h
     src/app/MainComponent.cpp
     src/app/MainComponent.h
+    src/app/PlaylistPanel.cpp
+    src/app/PlaylistPanel.h
     src/audio/AudioEngine.cpp
     src/audio/AudioEngine.h
+    src/audio/AudioFileLoader.cpp
+    src/audio/AudioFileLoader.h
     src/audio/AudioSettingsPanel.cpp
     src/audio/AudioSettingsPanel.h
     src/audio/AudioSetup.cpp
     src/audio/AudioSetup.h
     src/audio/Metronome.cpp
     src/audio/Metronome.h
+    src/audio/Playlist.cpp
+    src/audio/Playlist.h
     src/audio/Transport.cpp
     src/audio/Transport.h
     src/core/AppConfig.cpp

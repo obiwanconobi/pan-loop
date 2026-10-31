@@ -2,6 +2,7 @@
 
 #include "app/DarkLookAndFeel.h"
 #include "app/LivePanel.h"
+#include "app/PlaylistPanel.h"
 #include "audio/AudioSettingsPanel.h"
 #include "audio/AudioSetup.h"
 #include "core/AppConfig.h"
@@ -10,7 +11,8 @@
 
 namespace
 {
-    class SessionInfoPanel final : public juce::Component
+    class SessionInfoPanel final : public juce::Component,
+                                   private juce::Timer
     {
     public:
         SessionInfoPanel (juce::AudioDeviceManager& manager,
@@ -49,6 +51,13 @@ namespace
             addAndMakeVisible (openConfigButton);
             addAndMakeVisible (openLogButton);
             addAndMakeVisible (copyButton);
+
+            startTimerHz (1);
+        }
+
+        void timerCallback() override
+        {
+            refreshInfo();
         }
 
         void paint (juce::Graphics& g) override
@@ -77,14 +86,18 @@ namespace
         void refreshInfo()
         {
             const auto infoState = engine.getTransport().getPositionInfo();
+            const auto playlistInfo = engine.getPlaylist().getSnapshot();
 
             juce::String text;
             text << "Application: Pan Loop " << ProjectInfo::versionString << "\n"
-                 << "Phase: 2 - transport, metronome and latency readout\n"
+                 << "Phase: 3 - backing playlist, transport and metronome\n"
                  << "Transport: " << transportStateName (infoState.state)
                  << " | bar " << infoState.bar << "." << infoState.beat
                  << " | " << juce::String (infoState.bpm, 1) << " BPM"
                  << " | " << infoState.beatsPerBar << "/" << infoState.beatUnit << "\n"
+                 << "Playlist: " << static_cast<int> (playlistInfo.items.size()) << " file(s)"
+                 << " | cycle " << juce::String (playlistInfo.totalDurationSeconds, 2) << " s"
+                 << " | " << juce::String (playlistInfo.memoryUsageBytes / (1024.0 * 1024.0), 1) << " MB\n"
                  << "Metronome: " << (engine.getMetronome().isEnabled() ? "on" : "off")
                  << " | level " << juce::String (engine.getMetronome().getLevel() * 100.0f, 0) << " %\n"
                  << "Config directory: " << AppConfig::getConfigDirectory().getFullPathName() << "\n"
@@ -134,6 +147,14 @@ namespace
                  << " | " << transportInfo.beatsPerBar << "/" << transportInfo.beatUnit << "\n"
                  << "Round-trip latency: " << juce::String (engine.getRoundTripLatencyMs(), 1) << " ms\n";
 
+            const auto playlistInfo = engine.getPlaylist().getSnapshot();
+            text << "Playlist: " << static_cast<int> (playlistInfo.items.size()) << " file(s)"
+                 << " | cycle " << juce::String (playlistInfo.totalDurationSeconds, 2) << " s"
+                 << " | " << juce::String (playlistInfo.memoryUsageBytes / (1024.0 * 1024.0), 1) << " MB\n";
+
+            for (const auto& item : playlistInfo.items)
+                text << "  " << item.name << " (" << juce::String (item.durationSeconds, 2) << " s)\n";
+
             return text;
         }
 
@@ -174,7 +195,7 @@ MainComponent::MainComponent()
     subtitleLabel.setFont (juce::Font (juce::FontOptions (13.0f)));
     subtitleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    phaseLabel.setText ("PHASE 2  |  TRANSPORT + METRONOME", juce::dontSendNotification);
+    phaseLabel.setText ("PHASE 3  |  BACKING PLAYLIST", juce::dontSendNotification);
     phaseLabel.setFont (juce::Font (juce::FontOptions (13.0f, juce::Font::bold)));
     phaseLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::accent());
     phaseLabel.setJustificationType (juce::Justification::centredRight);
@@ -194,6 +215,8 @@ MainComponent::MainComponent()
     tabs.setTabBarDepth (40);
     tabs.setColour (juce::TabbedComponent::backgroundColourId, DarkLookAndFeel::background());
     tabs.addTab ("Live", DarkLookAndFeel::panel(), new LivePanel (audioEngine), true);
+    playlistPanel = new PlaylistPanel (audioEngine);
+    tabs.addTab ("Playlist", DarkLookAndFeel::panel(), playlistPanel, true);
     tabs.addTab ("Audio", DarkLookAndFeel::panel(),
                  new AudioSettingsPanel (deviceManager, audioEngine), true);
     tabs.addTab ("MIDI", DarkLookAndFeel::panel(), new MidiPanel (*midiManager), true);
@@ -206,18 +229,41 @@ MainComponent::MainComponent()
     setSize (1180, 820);
 
    #if JUCE_DEBUG
-    // Development smoke-test hook: start the transport and metronome after the
-    // initial JACK port connections have settled.
-    if (juce::SystemStats::getEnvironmentVariable ("PANLOOP_DEMO", {}) == "1")
+    const auto testPlaylist = juce::SystemStats::getEnvironmentVariable ("PANLOOP_TEST_PLAYLIST", {});
+
+    if (testPlaylist.isNotEmpty())
     {
         juce::Component::SafePointer<MainComponent> safeThis (this);
 
-        juce::Timer::callAfterDelay (2000, [safeThis]
+        juce::Timer::callAfterDelay (800, [safeThis, testPlaylist]
+        {
+            if (safeThis == nullptr || safeThis->playlistPanel == nullptr)
+                return;
+
+            auto paths = juce::StringArray::fromTokens (testPlaylist, ";", "");
+            paths.removeEmptyStrings();
+            safeThis->playlistPanel->addFilesForTest (paths);
+        });
+    }
+
+    // Development smoke-test hook: start the transport after the initial JACK
+    // port connections have settled. The metronome stays off when a test
+    // playlist is loaded so the recorded output contains only the backing files.
+    if (juce::SystemStats::getEnvironmentVariable ("PANLOOP_DEMO", {}) == "1")
+    {
+        juce::Component::SafePointer<MainComponent> safeThis (this);
+        const auto hasTestPlaylist = testPlaylist.isNotEmpty();
+        const auto forceMetronome = juce::SystemStats::getEnvironmentVariable ("PANLOOP_DEMO_METRONOME", {}) == "1";
+        const auto delayMs = hasTestPlaylist ? 4000 : 2000;
+
+        juce::Timer::callAfterDelay (delayMs, [safeThis, hasTestPlaylist, forceMetronome]
         {
             if (safeThis == nullptr)
                 return;
 
-            safeThis->audioEngine.getMetronome().setEnabled (true);
+            if (! hasTestPlaylist || forceMetronome)
+                safeThis->audioEngine.getMetronome().setEnabled (true);
+
             safeThis->audioEngine.getTransport().play();
         });
     }

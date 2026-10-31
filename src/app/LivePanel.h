@@ -44,6 +44,7 @@ private:
     juce::Label barBeatLabel;
     juce::Label timeLabel;
     juce::Label latencyLabel;
+    juce::Label cycleLabel;
     juce::Label transportHintLabel;
 
     juce::TextButton playPauseButton { "Play" };

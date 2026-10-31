@@ -20,6 +20,7 @@ void Transport::prepare (double newSampleRate)
 {
     sampleRate.store (juce::jmax (1.0, newSampleRate), std::memory_order_relaxed);
     positionSamples.store (0, std::memory_order_relaxed);
+    cycleLengthSamples.store (0, std::memory_order_relaxed);
     state.store (static_cast<int> (State::Stopped), std::memory_order_relaxed);
 }
 
@@ -58,14 +59,39 @@ void Transport::setTimeSignature (int numerator, int denominator)
     timeSignatureDenominator.store (juce::jlimit (1, 32, denominator), std::memory_order_relaxed);
 }
 
+void Transport::setCycleLengthSamples (juce::int64 newLength) noexcept
+{
+    newLength = juce::jmax (static_cast<juce::int64> (0), newLength);
+    cycleLengthSamples.store (newLength, std::memory_order_relaxed);
+
+    if (newLength > 0)
+    {
+        const auto current = positionSamples.load (std::memory_order_relaxed);
+
+        if (current >= newLength)
+            positionSamples.store (current % newLength, std::memory_order_relaxed);
+    }
+}
+
+juce::int64 Transport::getCycleLengthSamples() const noexcept
+{
+    return cycleLengthSamples.load (std::memory_order_relaxed);
+}
+
 void Transport::advance (int numSamples) noexcept
 {
     if (numSamples <= 0 || ! isPlaying())
         return;
 
-    const auto current = positionSamples.load (std::memory_order_relaxed);
-    positionSamples.store (current + static_cast<juce::int64> (numSamples),
-                           std::memory_order_relaxed);
+    auto newPosition = positionSamples.load (std::memory_order_relaxed)
+                     + static_cast<juce::int64> (numSamples);
+
+    const auto cycleLength = cycleLengthSamples.load (std::memory_order_relaxed);
+
+    if (cycleLength > 0)
+        newPosition %= cycleLength;
+
+    positionSamples.store (newPosition, std::memory_order_relaxed);
 }
 
 Transport::State Transport::getState() const noexcept
@@ -143,6 +169,7 @@ Transport::PositionInfo Transport::getPositionInfo() const noexcept
     PositionInfo info;
     info.state = getState();
     info.sample = getPositionSamples();
+    info.cycleLengthSamples = getCycleLengthSamples();
     info.seconds = getPositionSeconds();
     info.bpm = getBpm();
     info.beatsPerBar = getTimeSignatureNumerator();

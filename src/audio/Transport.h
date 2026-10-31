@@ -33,6 +33,11 @@ public:
     void setBpm (double newBpm);
     void setTimeSignature (int numerator, int denominator);
 
+    /** Sets the master cycle length. Zero means free-running (no wrap).
+        The position wraps immediately if it is already beyond the new length. */
+    void setCycleLengthSamples (juce::int64 newLength) noexcept;
+    juce::int64 getCycleLengthSamples() const noexcept;
+
     /** Called by the audio thread once per block. */
     void advance (int numSamples) noexcept;
 
@@ -58,6 +63,7 @@ public:
     {
         State state = State::Stopped;
         juce::int64 sample = 0;
+        juce::int64 cycleLengthSamples = 0;
         double seconds = 0.0;
         double bpm = 120.0;
         int bar = 1;
@@ -77,6 +83,7 @@ private:
     std::atomic<int> timeSignatureDenominator { 4 };
     std::atomic<int> state { static_cast<int> (State::Stopped) };
     std::atomic<juce::int64> positionSamples { 0 };
+    std::atomic<juce::int64> cycleLengthSamples { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Transport)
 };

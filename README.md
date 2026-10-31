@@ -12,7 +12,7 @@ The full design is in [PLAN.md](PLAN.md).
 
 ## Project status
 
-**Phase 2 complete: transport and metronome foundation**
+**Phase 3 complete: backing playlist**
 
 Implemented so far:
 
@@ -26,7 +26,7 @@ Implemented so far:
 - Sample rate, buffer size, latency, xrun and CPU display
 - MIDI input enumeration, selection, hot-plug rescan and activity monitor
 - Automatic selection of a device whose name contains “Live Logic”
-- Dark, stage-oriented UI with Live, Audio, MIDI and Session tabs
+- Dark, stage-oriented UI with Live, Playlist, Audio, MIDI and Session tabs
 - File logging and per-user config paths
 - **Sample-accurate transport clock** with BPM, time signature, bar/beat position, play/pause and stop/rewind
 - **Tap tempo** and BPM controls
@@ -35,8 +35,24 @@ Implemented so far:
 - **Round-trip latency readout**
 - Transport state is preserved across JACK port connection changes (the JUCE JACK backend restarts the audio device when ports change)
 - Metronome audio verified at 120 BPM: 0.5 s click intervals with accents every four beats
+- **Backing playlist** with ordered WAV / FLAC / MP3 / AIFF / OGG files
+- Background decoding and resampling to the JACK sample rate
+- Playlist total duration becomes the master transport cycle; playback is sample-accurate and loops back to the first file
+- Add files with the file chooser or drag-and-drop, plus remove, reorder, clear and per-file gain controls
+- Preloaded memory and cycle-duration display
+- Mono files are duplicated to stereo; files with more than two channels use the first two channels
+- Loading progress, error reporting and a list of loaded files
+- Playlist playback verified with WAV, FLAC and MP3 files, including a 44.1 kHz mono file resampled to 48 kHz; the recorded sequence repeated at the expected cycle length
 
-The backing playlist, loop engine, session persistence and MIDI learn are the next phases.
+The live loop engine, session persistence and MIDI learn are the next phases.
+
+### Backing playlist notes
+
+- The playlist is preloaded into RAM at the current JACK sample rate. Roughly 23 MB is used per minute of stereo audio at 48 kHz, 32-bit float. The Playlist tab shows the current total.
+- Structural playlist edits are only available while the transport is stopped. Per-file gain can be changed while playing.
+- Changing the JACK sample rate clears the preloaded playlist, because the decoded audio would be at the wrong rate. Re-add the files after changing sample rates.
+- MP3 files may include a few milliseconds of encoder delay/padding, so their decoded duration can be slightly longer than the nominal file length. WAV and FLAC decode sample-accurately.
+- Multichannel files currently use the first two channels rather than a proper surround downmix.
 
 ## Requirements
 
@@ -128,8 +144,8 @@ The Session tab shows these paths and can copy a diagnostics block to the clipbo
 ```text
 src/
   Main.cpp                     JUCE application entry point
-  app/                         main window, live transport panel, look and feel, tabs
-  audio/                       audio engine, transport, metronome, device setup, settings UI
+  app/                         main window, live transport, playlist UI, look and feel, tabs
+  audio/                       audio engine, transport, metronome, playlist, file loader, device setup
   core/                        config paths and logging
   midi/                        MIDI device management and monitor UI
   ui/                          shared widgets (level meter)
@@ -137,21 +153,27 @@ PLAN.md                        full product and implementation plan
 CMakeLists.txt                 build definition
 ```
 
-## Development smoke test
+## Development smoke tests
 
-Debug builds support a development-only hook that starts the transport and metronome two seconds after launch, after the initial JACK port connections have settled:
+Debug builds support two development-only hooks:
 
 ```bash
+# Start the transport and metronome after two seconds.
 PANLOOP_DEMO=1 ./build/pan-loop_artefacts/Debug/Pan\ Loop
+
+# Load a playlist at startup and start it after JACK connections settle.
+PANLOOP_DEMO=1 \
+PANLOOP_TEST_PLAYLIST="/path/to/one.wav;/path/to/two.flac" \
+./build/pan-loop_artefacts/Debug/Pan\ Loop
 ```
 
-This is useful for checking the transport clock, metronome audio and UI without touching the mouse. It is compiled out of release builds.
+`PANLOOP_DEMO` is useful for checking the transport clock, metronome audio and UI without touching the mouse. `PANLOOP_TEST_PLAYLIST` separates file paths with semicolons and loads them through the normal background loader. When a test playlist is present, the demo hook leaves the metronome off so recorded output contains only the backing files; set `PANLOOP_DEMO_METRONOME=1` to keep the click on while testing a playlist. These hooks are compiled out of release builds.
 
 ## Roadmap
 
 1. **Phase 1 — skeleton**: build, JACK I/O, MIDI enumeration, basic monitoring. *(complete)*
 2. **Phase 2 — transport and metronome**: transport clock, BPM/time signature, metronome, latency readout, Live transport panel. *(complete)*
-3. **Phase 3 — backing playlist**: file decoding/resampling, ordered playlist, gapless looping.
+3. **Phase 3 — backing playlist**: file decoding/resampling, ordered playlist, gapless looping, per-file gain, memory display. *(complete)*
 4. **Phase 4 — live looper**: first-loop capture, bar snap, overdub auto-stop, Stop/Discard state machine, latency compensation.
 5. **Phase 5 — MIDI control**: MIDI Learn, action mappings, persistence, Blackstar quick start.
 6. **Phase 6 — session and polish**: save/load, layer WAVs, mixdown export, performance view, AppImage packaging, tests.

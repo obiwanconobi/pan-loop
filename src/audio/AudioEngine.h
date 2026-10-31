@@ -4,6 +4,7 @@
 #include <atomic>
 
 #include "Metronome.h"
+#include "Playlist.h"
 #include "Transport.h"
 
 /**
@@ -52,6 +53,11 @@ public:
     const Transport& getTransport() const noexcept  { return transport; }
     Metronome& getMetronome() noexcept              { return metronome; }
     const Metronome& getMetronome() const noexcept  { return metronome; }
+    Playlist& getPlaylist() noexcept                { return playlist; }
+    const Playlist& getPlaylist() const noexcept    { return playlist; }
+
+    /** Recomputes the transport cycle after a playlist edit. Message thread only. */
+    void playlistChanged();
 
     bool hasClipped() const noexcept;
     void resetClipIndicator() noexcept;
@@ -59,8 +65,11 @@ public:
 private:
     Transport transport;
     Metronome metronome;
+    Playlist playlist;
+    juce::AudioBuffer<float> mixBuffer;
 
     Transport::State lastTransportState = Transport::State::Stopped;
+    juce::int64 lastTransportPositionSamples = 0;
     double nextBeatPosition = 0.0;
     double lastSamplesPerBeat = 0.0;
     double preparedSampleRate = 0.0;
