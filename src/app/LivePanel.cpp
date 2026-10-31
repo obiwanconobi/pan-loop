@@ -470,8 +470,7 @@ void LivePanel::updateControls()
                                playing ? juce::Colour (0xff1e5b3a)
                                        : juce::Colour (0xff24405e));
     playPauseButton.setColour (juce::TextButton::textColourOffId,
-                               playing ? DarkLookAndFeel::playing()
-                                       : DarkLookAndFeel::text());
+                               DarkLookAndFeel::text());
 
     if (metroToggle.getToggleState() != engine.getMetronome().isEnabled())
         metroToggle.setToggleState (engine.getMetronome().isEnabled(),
@@ -611,12 +610,16 @@ void LivePanel::updateLiveControls()
     }
     else if (! engine.getTransport().isPlaying())
     {
-        status = juce::String (layerCount) + " layer(s) ready. Press Play to hear them.";
+        status = juce::String (layerCount)
+               + (layerCount == 1 ? " layer" : " layers")
+               + " ready. Press Play to hear them.";
         colour = DarkLookAndFeel::text();
     }
     else
     {
-        status = juce::String (layerCount) + " layer(s) playing. Record adds another layer.";
+        status = juce::String (layerCount)
+               + (layerCount == 1 ? " layer" : " layers")
+               + " playing. Record adds another layer.";
         colour = DarkLookAndFeel::playing();
     }
 

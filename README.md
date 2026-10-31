@@ -10,6 +10,145 @@ Pan Loop is intended to combine:
 
 The full design is in [PLAN.md](PLAN.md).
 
+![Pan Loop live view](docs/screenshots/pan-loop-live.png)
+
+*Live view with two backing tracks loaded, transport running, and a finished loop layer playing.*
+
+## Quick start for users
+
+Pan Loop runs on Linux and expects a working **JACK** audio server. On most desktop Linux systems, PipeWire provides JACK; if you use JACK2, start it first with `qjackctl` or `jackd`. If JACK is unavailable, the Audio tab can use ALSA or PulseAudio for basic testing.
+
+### Option 1: AppImage (recommended)
+
+Download a release AppImage, or build one from the source tree:
+
+```bash
+./scripts/build-appimage.sh
+```
+
+Then make it executable and launch it:
+
+```bash
+chmod +x Pan-Loop-0.1.0-x86_64.AppImage
+./Pan-Loop-0.1.0-x86_64.AppImage
+```
+
+If FUSE is not available on your system:
+
+```bash
+APPIMAGE_EXTRACT_AND_RUN=1 ./Pan-Loop-0.1.0-x86_64.AppImage
+```
+
+The AppImage includes the application, icon and desktop metadata. You can keep it anywhere; use your desktop’s AppImage integration or create a launcher for it.
+
+### Option 2: Install from source to your home directory
+
+Install the build dependencies (Debian / Ubuntu example):
+
+```bash
+sudo apt install build-essential cmake ninja-build git pkg-config \
+  libjack-jackd2-dev libasound2-dev \
+  libfreetype-dev libfontconfig1-dev \
+  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+  libgl1-mesa-dev libcurl4-openssl-dev
+```
+
+Build a Release binary:
+
+```bash
+cmake -S . -B build-release -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DPANLOOP_BUILD_TESTS=OFF
+cmake --build build-release -j"$(nproc)"
+```
+
+Install it for the current user:
+
+```bash
+install -Dm755 build-release/pan-loop_artefacts/Release/pan-loop \
+  ~/.local/bin/pan-loop
+install -Dm644 packaging/pan-loop.desktop \
+  ~/.local/share/applications/pan-loop.desktop
+install -Dm644 packaging/pan-loop.svg \
+  ~/.local/share/icons/hicolor/scalable/apps/pan-loop.svg
+```
+
+Make sure `~/.local/bin` is on your `PATH`, then launch `pan-loop` from a terminal or from your application menu. For a system-wide install, copy the same files to `/usr/local/bin`, `/usr/local/share/applications` and `/usr/local/share/icons/hicolor/scalable/apps` using `sudo`.
+
+## Using Pan Loop
+
+### 1. Set up audio
+
+1. Start PipeWire or your JACK server.
+2. Launch Pan Loop. It prefers JACK and opens stereo input/output automatically.
+3. Open the **Audio** tab and check the status block: device, sample rate, buffer size, channel counts, latency and CPU.
+4. If needed, select a different backend or input/output device and press **Apply**.
+5. On PipeWire/JACK, the JACK server owns the sample rate. The **Buffer size** control changes the PipeWire graph quantum; select a value and press **Apply**. On non-JACK backends both sample rate and buffer size can be changed.
+
+If you use speakers instead of headphones, turn off **Input monitoring** to avoid feedback, or use an audio interface with direct monitoring.
+
+### 2. Add backing tracks
+
+1. Open the **Playlist** tab.
+2. Use **Add files** or drag WAV, FLAC, MP3, AIFF or OGG files into the list.
+3. Reorder or remove files while playback is stopped. Per-file gain can be changed while playing.
+4. The playlist plays in order and repeats as one master cycle. The cycle length is shown in the playlist and Live tabs.
+
+### 3. Record loops
+
+1. Open the **Live** tab.
+2. Press **Record**. With no playlist, this starts the first free-form loop.
+3. Press **Stop Rec** to finalize the first loop. The loop length becomes the master cycle. Enable **Snap first loop to bar** if you want the length rounded to the nearest bar at the current BPM.
+4. With an existing cycle, press **Record** again to create an overdub. It arms at the next cycle start and stops automatically at the loop boundary.
+5. **Discard** aborts an in-progress take, or removes the most recent finished layer.
+6. Use **Play/Pause** and **Stop** for transport control. Keyboard shortcuts: `Space` play/pause, `S` stop, `R` record, `T` stop recording, `D` discard.
+
+### 4. Mix layers
+
+Open the **Layers** tab and select a layer to adjust:
+
+- **Gain** — level in the live mix.
+- **Pan** — stereo position (`C`, `L 50`, `R 50`, etc.).
+- **Mute** / **Solo** — layer monitoring.
+- **Delete** — remove the selected layer; **Clear layers** removes all live layers.
+
+Pan, gain, mute and solo are saved with sessions and included in mixdown exports.
+
+### 5. Use a MIDI footswitch
+
+1. Connect the footswitch over USB.
+2. Open the **MIDI** tab and select it from the **Device** list. Devices shown with `(raw MIDI)` are USB MIDI devices opened directly through ALSA when PipeWire hides them from the ALSA sequencer.
+3. Click **Learn** next to an action, then press the footswitch.
+4. For CC messages, values **64–127** count as a press; values below 64 are ignored. Note On messages trigger with any velocity above zero; Program Change messages trigger on receipt.
+5. Type a name into the **Preset name** box and press **Save** to keep the selected device and all mappings as a preset. Choose it later from the **Preset** list to restore the setup. **Delete** removes the selected preset.
+
+One MIDI input is active at a time. If a device was plugged in after launch, press **Rescan**.
+
+### 6. Save and export
+
+Open the **Session** tab:
+
+- **Save Session...** writes a `.panloop` file plus a `<name>.layers/` folder containing the recorded layers.
+- **Load Session...** restores the playlist, layers, mixer settings, tempo, metronome and MIDI mappings. The audio device must be at the same sample rate as the session.
+- **Export Mixdown...** renders exactly one master cycle to a stereo WAV file, including the audible backing/layer mix.
+- **New Session** clears the playlist and live layers.
+
+### 7. Performance view
+
+Press **F11** or click **Performance** for a large stage-friendly view:
+
+![Pan Loop performance view](docs/screenshots/pan-loop-performance.png)
+
+The performance view provides oversized Record, Stop Rec, Discard and Play/Pause buttons, cycle progress, backing/layer status and large input/output meters. Press `Esc` to exit. `F11` toggles full screen.
+
+## Troubleshooting
+
+- **No audio:** make sure PipeWire or JACK is running, then open the Audio tab and press **Rescan**. If JACK is not available, select ALSA or PulseAudio as a fallback.
+- **No MIDI device:** press **Rescan** in the MIDI tab. If your device appears with `(raw MIDI)`, it is being opened directly because PipeWire did not expose it through the ALSA sequencer. If it still does not appear, check that your user is in the `audio` group and can access `/dev/snd`.
+- **MIDI Learn does nothing:** for CC footswitches, the pressed value must be at least 64. Some devices send a low value on press; use the device’s editor to configure it to send 127 (or at least 64).
+- **Session will not load:** the session and the current audio device must use the same sample rate. Change the JACK/PipeWire rate first, then load the session.
+- **AppImage does not start:** install FUSE, or run it with `APPIMAGE_EXTRACT_AND_RUN=1`.
+
 ## Project status
 
 **Phase 6 complete: sessions, performance view and packaging**
