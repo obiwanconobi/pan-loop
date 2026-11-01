@@ -11,10 +11,7 @@ namespace
 {
     void styleLabel (juce::Label& label, float height, bool bold = false)
     {
-        label.setFont (juce::Font (juce::FontOptions (height,
-                                                      bold ? juce::Font::bold : juce::Font::plain)));
-        label.setColour (juce::Label::textColourId, DarkLookAndFeel::text());
-        label.setJustificationType (juce::Justification::centredLeft);
+        DarkLookAndFeel::styleLabel (label, height, bold);
     }
 }
 
@@ -24,28 +21,42 @@ LivePanel::LivePanel (AudioEngine& audioEngine)
     setOpaque (true);
     setWantsKeyboardFocus (true);
 
-    styleLabel (titleLabel, 30.0f, true);
-    styleLabel (subtitleLabel, 13.0f);
-    styleLabel (stateLabel, 13.0f, true);
-    styleLabel (barBeatLabel, 46.0f, true);
+    styleLabel (titleLabel, 28.0f, true);
+    styleLabel (subtitleLabel, 12.5f);
+    styleLabel (stateLabel, 11.5f, true);
+    styleLabel (barBeatLabel, 48.0f, true);
     styleLabel (timeLabel, 14.0f);
-    styleLabel (latencyLabel, 12.0f);
-    styleLabel (cycleLabel, 12.0f);
-    styleLabel (transportHintLabel, 12.0f);
-    styleLabel (loopTitleLabel, 18.0f, true);
-    styleLabel (loopHintLabel, 13.0f);
-    styleLabel (bpmLabel, 13.0f);
-    styleLabel (timeSigLabel, 13.0f);
-    styleLabel (metroLevelLabel, 13.0f);
+    styleLabel (latencyLabel, 11.5f);
+    styleLabel (cycleLabel, 11.5f);
+    styleLabel (transportHintLabel, 11.0f);
+    styleLabel (loopTitleLabel, 11.5f, true);
+    styleLabel (loopHintLabel, 13.5f);
+    styleLabel (bpmLabel, 10.5f, true);
+    styleLabel (timeSigLabel, 10.5f, true);
+    styleLabel (metroLevelLabel, 10.5f, true);
+
+    titleLabel.setFont (DarkLookAndFeel::sans (28.0f, true)
+                            .withExtraKerningFactor (0.02f));
+    subtitleLabel.setFont (DarkLookAndFeel::sans (12.5f));
+    stateLabel.setFont (DarkLookAndFeel::kicker (11.5f));
+    barBeatLabel.setFont (DarkLookAndFeel::mono (48.0f, true));
+    timeLabel.setFont (DarkLookAndFeel::mono (14.0f));
+    latencyLabel.setFont (DarkLookAndFeel::mono (11.5f));
+    cycleLabel.setFont (DarkLookAndFeel::mono (11.5f));
+    transportHintLabel.setFont (DarkLookAndFeel::mono (11.0f));
+    loopTitleLabel.setFont (DarkLookAndFeel::kicker (11.5f));
+    bpmLabel.setFont (DarkLookAndFeel::kicker (10.5f));
+    timeSigLabel.setFont (DarkLookAndFeel::kicker (10.5f));
+    metroLevelLabel.setFont (DarkLookAndFeel::kicker (10.5f));
 
     titleLabel.setText ("Live", juce::dontSendNotification);
-    subtitleLabel.setText ("Transport, metronome and live loop layers",
+    subtitleLabel.setText ("Transport, tempo and loop layers",
                            juce::dontSendNotification);
     subtitleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
     stateLabel.setText ("STOPPED", juce::dontSendNotification);
     stateLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
-    stateLabel.setJustificationType (juce::Justification::centredRight);
+    stateLabel.setJustificationType (juce::Justification::centred);
 
     barBeatLabel.setText ("BAR 1.1", juce::dontSendNotification);
     timeLabel.setText ("00:00.000   |   120.0 BPM   |   4/4", juce::dontSendNotification);
@@ -57,36 +68,44 @@ LivePanel::LivePanel (AudioEngine& audioEngine)
     cycleLabel.setText ("Cycle: free-running", juce::dontSendNotification);
     cycleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    transportHintLabel.setText ("Space: play/pause   |   S: stop   |   R: record   |   T: stop rec   |   D: discard",
+    transportHintLabel.setText ("SPACE play/pause   |   S stop   |   R record   |   T stop rec   |   D discard",
                                 juce::dontSendNotification);
     transportHintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    loopTitleLabel.setText ("Loop layers", juce::dontSendNotification);
+    loopTitleLabel.setText ("LOOP RECORDING", juce::dontSendNotification);
+    loopTitleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
     loopHintLabel.setText ("No live layers yet. Record starts the first loop.",
                            juce::dontSendNotification);
     loopHintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
     bpmLabel.setText ("BPM", juce::dontSendNotification);
     bpmLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
-    timeSigLabel.setText ("Time signature", juce::dontSendNotification);
+    timeSigLabel.setText ("TIME SIGNATURE", juce::dontSendNotification);
     timeSigLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
-    metroLevelLabel.setText ("Level", juce::dontSendNotification);
+    metroLevelLabel.setText ("LEVEL", juce::dontSendNotification);
     metroLevelLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
     playPauseButton.setClickingTogglesState (false);
     playPauseButton.setTooltip ("Play or pause the transport (Space)");
-    playPauseButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff24405e));
-    playPauseButton.setColour (juce::TextButton::textColourOffId, DarkLookAndFeel::text());
+    DarkLookAndFeel::setButtonVariant (playPauseButton, "primary");
+    DarkLookAndFeel::setButtonIcon (playPauseButton, "play");
+    DarkLookAndFeel::setButtonTextSize (playPauseButton, 18.0f);
     playPauseButton.onClick = [this] { togglePlayPause(); };
 
     stopButton.setTooltip ("Stop and rewind to bar 1 (S)");
+    DarkLookAndFeel::setButtonVariant (stopButton, "ghost");
+    DarkLookAndFeel::setButtonIcon (stopButton, "stop");
+    DarkLookAndFeel::setButtonTextSize (stopButton, 14.0f);
     stopButton.onClick = [this] { stopTransport(); };
 
     tapButton.setTooltip ("Tap four times to set the tempo");
+    DarkLookAndFeel::setButtonVariant (tapButton, "accent");
+    DarkLookAndFeel::setButtonIcon (tapButton, "tap");
+    DarkLookAndFeel::setButtonTextSize (tapButton, 13.0f);
     tapButton.onClick = [this] { tapTempo(); };
 
     bpmSlider.setSliderStyle (juce::Slider::IncDecButtons);
-    bpmSlider.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 80, 28);
+    bpmSlider.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 72, 30);
     bpmSlider.setRange (40.0, 240.0, 0.1);
     bpmSlider.setNumDecimalPlacesToDisplay (1);
     bpmSlider.setValue (engine.getTransport().getBpm(), juce::dontSendNotification);
@@ -123,12 +142,17 @@ LivePanel::LivePanel (AudioEngine& audioEngine)
     stopRecButton.setTooltip ("Stop recording and keep the take (T)");
     discardButton.setTooltip ("Discard the current take or most recent layer (D)");
 
-    recordButton.setColour (juce::TextButton::buttonColourId,
-                            DarkLookAndFeel::recording().withAlpha (0.18f));
-    stopRecButton.setColour (juce::TextButton::buttonColourId,
-                             DarkLookAndFeel::armed().withAlpha (0.18f));
-    discardButton.setColour (juce::TextButton::buttonColourId,
-                             DarkLookAndFeel::mutedText().withAlpha (0.18f));
+    DarkLookAndFeel::setButtonVariant (recordButton, "danger");
+    DarkLookAndFeel::setButtonIcon (recordButton, "record");
+    DarkLookAndFeel::setButtonTextSize (recordButton, 16.0f);
+
+    DarkLookAndFeel::setButtonVariant (stopRecButton, "warning");
+    DarkLookAndFeel::setButtonIcon (stopRecButton, "stop");
+    DarkLookAndFeel::setButtonTextSize (stopRecButton, 16.0f);
+
+    DarkLookAndFeel::setButtonVariant (discardButton, "dangerSoft");
+    DarkLookAndFeel::setButtonIcon (discardButton, "trash");
+    DarkLookAndFeel::setButtonTextSize (discardButton, 16.0f);
 
     recordButton.onClick = [this] { startRecording(); };
     stopRecButton.onClick = [this] { stopRecording(); };
@@ -174,25 +198,55 @@ void LivePanel::paint (juce::Graphics& g)
 {
     g.fillAll (DarkLookAndFeel::background());
 
-    auto drawCard = [&g] (juce::Rectangle<int> bounds)
+    DarkLookAndFeel::drawCard (g, transportCard, true);
+    DarkLookAndFeel::drawCard (g, tempoCard);
+    DarkLookAndFeel::drawCard (g, loopCard);
+
+    const auto drawKicker = [&g] (juce::Rectangle<int> card, const juce::String& text)
     {
-        if (bounds.isEmpty())
+        if (card.isEmpty())
             return;
 
-        g.setColour (DarkLookAndFeel::panel());
-        g.fillRoundedRectangle (bounds.toFloat(), 10.0f);
-        g.setColour (DarkLookAndFeel::outline());
-        g.drawRoundedRectangle (bounds.toFloat().reduced (0.5f), 10.0f, 1.0f);
+        g.setColour (DarkLookAndFeel::mutedText());
+        g.setFont (DarkLookAndFeel::kicker (10.5f));
+        g.drawText (text, card.getX() + 20, card.getY() + 12,
+                    card.getWidth() - 40, 16,
+                    juce::Justification::centredLeft, false);
     };
 
-    drawCard (transportCard);
-    drawCard (loopCard);
+    drawKicker (transportCard, "TRANSPORT");
+    drawKicker (tempoCard, "TEMPO / CLICK");
+
+    if (! statePillArea.isEmpty())
+    {
+        const auto stateColour = stateLabel.findColour (juce::Label::textColourId);
+
+        DarkLookAndFeel::drawPill (g, statePillArea,
+                                   stateColour.withAlpha (0.12f),
+                                   stateColour.withAlpha (0.38f));
+
+        g.setColour (stateColour);
+        g.fillEllipse (static_cast<float> (statePillArea.getX() + 12),
+                       static_cast<float> (statePillArea.getCentreY() - 3),
+                       6.0f, 6.0f);
+    }
+
+    if (! loopStatusDotArea.isEmpty())
+    {
+        const auto colour = loopHintLabel.findColour (juce::Label::textColourId);
+
+        g.setColour (colour.withAlpha (0.22f));
+        g.fillEllipse (loopStatusDotArea.toFloat().expanded (3.0f));
+
+        g.setColour (colour);
+        g.fillEllipse (loopStatusDotArea.toFloat());
+    }
 
     const auto info = engine.getTransport().getPositionInfo();
 
     const auto beats = juce::jmax (1, info.beatsPerBar);
-    const auto diameter = juce::jmin (26.0f, static_cast<float> (beatIndicatorArea.getHeight()));
-    const auto gap = 14.0f;
+    const auto diameter = juce::jmin (14.0f, static_cast<float> (beatIndicatorArea.getHeight()) * 0.62f);
+    const auto gap = 22.0f;
     const auto totalWidth = static_cast<float> (beats) * diameter
                           + static_cast<float> (beats - 1) * gap;
 
@@ -211,12 +265,17 @@ void LivePanel::paint (juce::Graphics& g)
 
         if (isActive)
         {
-            g.setColour (i == 0 ? DarkLookAndFeel::armed() : DarkLookAndFeel::playing());
+            const auto colour = i == 0 ? DarkLookAndFeel::armed() : DarkLookAndFeel::playing();
+
+            g.setColour (colour.withAlpha (0.18f));
+            g.fillEllipse (circle.expanded (5.0f));
+
+            g.setColour (colour);
             g.fillEllipse (circle);
         }
         else
         {
-            g.setColour (DarkLookAndFeel::outline());
+            g.setColour (DarkLookAndFeel::outline().withAlpha (0.9f));
             g.drawEllipse (circle, 1.5f);
         }
 
@@ -229,82 +288,140 @@ void LivePanel::paint (juce::Graphics& g)
 
     if (info.state != Transport::State::Stopped)
     {
-        g.setColour (info.state == Transport::State::Playing
-                       ? DarkLookAndFeel::accent()
-                       : DarkLookAndFeel::mutedText());
+        const auto filledWidth = bar.getWidth() * static_cast<float> (juce::jlimit (0.0, 1.0, info.barPhase));
 
-        const auto filledWidth = bar.getWidth() * static_cast<float> (info.barPhase);
         if (filledWidth > 1.0f)
+        {
+            const auto colour = info.state == Transport::State::Playing
+                                  ? DarkLookAndFeel::accent()
+                                  : DarkLookAndFeel::armed();
+
+            juce::ColourGradient gradient (DarkLookAndFeel::accentDeep(), bar.getTopLeft(),
+                                           colour, bar.getTopRight(), false);
+            g.setGradientFill (gradient);
             g.fillRoundedRectangle (bar.withWidth (filledWidth), 4.0f);
+
+            g.setColour (colour.withAlpha (0.20f));
+            g.fillEllipse (bar.getX() + filledWidth - 7.0f, bar.getCentreY() - 7.0f,
+                           14.0f, 14.0f);
+
+            g.setColour (colour);
+            g.fillEllipse (bar.getX() + filledWidth - 2.5f, bar.getCentreY() - 2.5f,
+                           5.0f, 5.0f);
+        }
     }
 }
 
 void LivePanel::resized()
 {
-    auto area = getLocalBounds().reduced (28);
+    auto area = getLocalBounds().reduced (24);
 
-    auto header = area.removeFromTop (56);
-    auto titleArea = header.removeFromLeft (560);
-    titleLabel.setBounds (titleArea.removeFromTop (34));
+    auto header = area.removeFromTop (54);
+    auto titleArea = header.removeFromLeft (juce::jmin (560, juce::jmax (300, header.getWidth() - 170)));
+    titleLabel.setBounds (titleArea.removeFromTop (32));
     subtitleLabel.setBounds (titleArea);
-    stateLabel.setBounds (header.removeFromRight (380));
+
+    statePillArea = header.removeFromRight (150).withSizeKeepingCentre (150, 32);
+    stateLabel.setBounds (statePillArea.withTrimmedLeft (22).withTrimmedRight (6));
 
     area.removeFromTop (12);
-    transportCard = area.removeFromTop (330);
-    area.removeFromTop (16);
-    loopCard = area.removeFromTop (170);
+
+    const auto topHeight = juce::jmin (juce::jlimit (230, 340, juce::roundToInt (area.getHeight() * 0.60f)),
+                                       juce::jmax (0, area.getHeight() - 120));
+    auto top = area.removeFromTop (topHeight);
+    const auto transportWidth = juce::roundToInt (static_cast<float> (top.getWidth()) * 0.62f);
+
+    transportCard = top.removeFromLeft (transportWidth);
+    top.removeFromLeft (14);
+    tempoCard = top;
+
+    area.removeFromTop (14);
+    loopCard = area;
 
     {
-        auto inner = transportCard.reduced (24, 18);
-        auto top = inner.removeFromTop (150);
+        auto inner = transportCard.reduced (20);
+        inner.removeFromTop (26);
+        inner.removeFromTop (juce::jmax (0, (inner.getHeight() - 232) / 2));
 
-        auto buttonArea = top.removeFromLeft (420);
-        playPauseButton.setBounds (buttonArea.removeFromTop (90).reduced (6));
-        buttonArea.removeFromTop (8);
-        stopButton.setBounds (buttonArea.removeFromTop (44).reduced (6));
+        const auto controlsHeight = juce::jlimit (48, 68,
+                                                   juce::roundToInt (inner.getHeight() * 0.26f));
+        auto controls = inner.removeFromTop (controlsHeight);
+        auto playArea = controls.removeFromLeft (juce::roundToInt (controls.getWidth() * 0.62f));
+        playPauseButton.setBounds (playArea);
+        controls.removeFromLeft (10);
+        stopButton.setBounds (controls);
 
-        top.removeFromLeft (24);
-        barBeatLabel.setBounds (top.removeFromTop (66));
-        timeLabel.setBounds (top.removeFromTop (26));
-        beatIndicatorArea = top.removeFromTop (38);
-        top.removeFromTop (6);
-        barProgressArea = top.removeFromTop (10);
+        inner.removeFromTop (8);
 
-        inner.removeFromTop (16);
-        auto controls = inner.removeFromTop (42);
-        bpmLabel.setBounds (controls.removeFromLeft (42));
-        bpmSlider.setBounds (controls.removeFromLeft (180));
-        controls.removeFromLeft (22);
-        timeSigLabel.setBounds (controls.removeFromLeft (92));
-        timeSigBox.setBounds (controls.removeFromLeft (90));
-        controls.removeFromLeft (12);
-        tapButton.setBounds (controls.removeFromLeft (70));
-        controls.removeFromLeft (24);
-        metroToggle.setBounds (controls.removeFromLeft (130));
-        controls.removeFromLeft (8);
-        metroLevelLabel.setBounds (controls.removeFromLeft (46));
-        metroLevelSlider.setBounds (controls.removeFromLeft (170));
+        const auto barHeight = juce::jlimit (36, 58, inner.getHeight() - 98);
+        barBeatLabel.setBounds (inner.removeFromTop (barHeight));
+        timeLabel.setBounds (inner.removeFromTop (20));
+        inner.removeFromTop (4);
+        beatIndicatorArea = inner.removeFromTop (26);
+        inner.removeFromTop (4);
+        barProgressArea = inner.removeFromTop (8);
+        inner.removeFromTop (8);
 
-        inner.removeFromTop (18);
-        auto bottom = inner.removeFromTop (24);
-        latencyLabel.setBounds (bottom.removeFromLeft (260));
-        cycleLabel.setBounds (bottom.removeFromLeft (230));
-        transportHintLabel.setBounds (bottom);
+        auto stats = inner.removeFromTop (20);
+        latencyLabel.setBounds (stats.removeFromLeft (juce::jmin (250, stats.getWidth() / 2)));
+        cycleLabel.setBounds (stats);
     }
 
     {
-        auto inner = loopCard.reduced (24, 18);
-        loopTitleLabel.setBounds (inner.removeFromTop (26));
-        loopHintLabel.setBounds (inner.removeFromTop (20));
-        inner.removeFromTop (8);
+        auto inner = tempoCard.reduced (20);
+        inner.removeFromTop (26);
+        inner.removeFromTop (juce::jmax (0, (inner.getHeight() - 184) / 2));
 
-        auto buttons = inner.removeFromTop (44);
-        recordButton.setBounds (buttons.removeFromLeft (170).reduced (6));
-        stopRecButton.setBounds (buttons.removeFromLeft (170).reduced (6));
-        discardButton.setBounds (buttons.removeFromLeft (170).reduced (6));
+        bpmLabel.setBounds (inner.removeFromTop (14));
+        inner.removeFromTop (4);
+
+        auto bpmRow = inner.removeFromTop (34);
+        tapButton.setBounds (bpmRow.removeFromRight (78));
+        bpmRow.removeFromRight (8);
+        bpmSlider.setBounds (bpmRow);
+
+        inner.removeFromTop (12);
+        timeSigLabel.setBounds (inner.removeFromTop (14));
+        inner.removeFromTop (4);
+        timeSigBox.setBounds (inner.removeFromTop (30).removeFromLeft (juce::jmin (130, inner.getWidth())));
+
+        inner.removeFromTop (12);
+        metroToggle.setBounds (inner.removeFromTop (28));
 
         inner.removeFromTop (8);
-        barSnapToggle.setBounds (inner.removeFromTop (28).removeFromLeft (260));
+        auto levelRow = inner.removeFromTop (24);
+        metroLevelLabel.setBounds (levelRow.removeFromLeft (46));
+        metroLevelSlider.setBounds (levelRow);
+    }
+
+    {
+        auto inner = loopCard.reduced (20);
+        auto titleRow = inner.removeFromTop (22);
+        barSnapToggle.setBounds (titleRow.removeFromRight (juce::jmin (260, titleRow.getWidth() / 2)));
+        loopTitleLabel.setBounds (titleRow);
+
+        inner.removeFromTop (4);
+
+        auto statusRow = inner.removeFromTop (20);
+        loopStatusDotArea = statusRow.removeFromLeft (10).withSizeKeepingCentre (7, 7);
+        loopHintLabel.setBounds (statusRow);
+
+        transportHintLabel.setBounds (inner.removeFromBottom (20));
+        inner.removeFromTop (6);
+
+        auto buttons = inner;
+        const auto gap = 10;
+        const auto availableHeight = juce::jmin (96, buttons.getHeight());
+        buttons = buttons.withSizeKeepingCentre (buttons.getWidth(), availableHeight);
+        const auto available = juce::jmax (0, buttons.getWidth() - gap * 2);
+        const auto recordWidth = juce::roundToInt (static_cast<float> (available) * 0.40f);
+        const auto stopWidth = juce::roundToInt (static_cast<float> (available) * 0.32f);
+
+        recordButton.setBounds (buttons.removeFromLeft (recordWidth));
+        buttons.removeFromLeft (gap);
+        stopRecButton.setBounds (buttons.removeFromLeft (stopWidth));
+        buttons.removeFromLeft (gap);
+        discardButton.setBounds (buttons);
     }
 }
 
@@ -466,11 +583,8 @@ void LivePanel::updateControls()
     if (playPauseButton.getButtonText() != playText)
         playPauseButton.setButtonText (playText);
 
-    playPauseButton.setColour (juce::TextButton::buttonColourId,
-                               playing ? juce::Colour (0xff1e5b3a)
-                                       : juce::Colour (0xff24405e));
-    playPauseButton.setColour (juce::TextButton::textColourOffId,
-                               DarkLookAndFeel::text());
+    DarkLookAndFeel::setButtonVariant (playPauseButton, playing ? "success" : "primary");
+    DarkLookAndFeel::setButtonIcon (playPauseButton, playing ? "pause" : "play");
 
     if (metroToggle.getToggleState() != engine.getMetronome().isEnabled())
         metroToggle.setToggleState (engine.getMetronome().isEnabled(),
@@ -533,8 +647,7 @@ void LivePanel::updateControls()
                            + "   |   " + juce::String (info.beatsPerBar)
                            + "/" + juce::String (info.beatUnit),
                        juce::dontSendNotification);
-    latencyLabel.setText ("Round-trip latency: "
-                              + juce::String (engine.getRoundTripLatencyMs(), 1) + " ms",
+    latencyLabel.setText ("LATENCY  " + juce::String (engine.getRoundTripLatencyMs(), 1) + " ms",
                           juce::dontSendNotification);
 
     if (info.cycleLengthSamples > 0)
@@ -543,16 +656,18 @@ void LivePanel::updateControls()
         const auto cycleSeconds = sampleRate > 0.0
                                     ? static_cast<double> (info.cycleLengthSamples) / sampleRate
                                     : 0.0;
-        cycleLabel.setText ("Cycle: " + formatTime (cycleSeconds),
+        cycleLabel.setText ("CYCLE  " + formatTime (cycleSeconds),
                             juce::dontSendNotification);
     }
     else
     {
-        cycleLabel.setText ("Cycle: free-running", juce::dontSendNotification);
+        cycleLabel.setText ("CYCLE  free-running", juce::dontSendNotification);
     }
 
     updateLiveControls();
-    repaint (beatIndicatorArea.getUnion (barProgressArea));
+    repaint (beatIndicatorArea.getUnion (barProgressArea)
+                 .getUnion (statePillArea)
+                 .getUnion (loopStatusDotArea));
 }
 
 void LivePanel::updateLiveControls()

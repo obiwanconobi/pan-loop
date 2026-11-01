@@ -3,6 +3,7 @@
 #include "app/DarkLookAndFeel.h"
 #include "audio/AudioEngine.h"
 
+#include <array>
 #include <cmath>
 
 namespace
@@ -21,14 +22,23 @@ LayersPanel::LayersPanel (AudioEngine& audioEngine)
 {
     setOpaque (true);
 
-    styleLabel (titleLabel, 30.0f, true);
-    styleLabel (subtitleLabel, 13.0f);
+    styleLabel (titleLabel, 28.0f, true);
+    styleLabel (subtitleLabel, 12.5f);
     styleLabel (statusLabel, 12.0f);
-    styleLabel (totalLabel, 13.0f);
-    styleLabel (selectionLabel, 13.0f, true);
-    styleLabel (gainLabel, 12.0f);
-    styleLabel (panLabel, 12.0f);
-    styleLabel (emptyLabel, 15.0f);
+    styleLabel (totalLabel, 11.5f, true);
+    styleLabel (selectionLabel, 17.0f, true);
+    styleLabel (gainLabel, 10.5f, true);
+    styleLabel (panLabel, 10.5f, true);
+    styleLabel (emptyLabel, 13.5f);
+
+    titleLabel.setFont (DarkLookAndFeel::sans (28.0f, true)
+                            .withExtraKerningFactor (0.02f));
+    subtitleLabel.setFont (DarkLookAndFeel::sans (12.5f));
+    statusLabel.setFont (DarkLookAndFeel::mono (11.5f));
+    totalLabel.setFont (DarkLookAndFeel::mono (11.5f, true));
+    totalLabel.setJustificationType (juce::Justification::centred);
+    gainLabel.setFont (DarkLookAndFeel::kicker (10.5f));
+    panLabel.setFont (DarkLookAndFeel::kicker (10.5f));
 
     titleLabel.setText ("Layers", juce::dontSendNotification);
     subtitleLabel.setText ("Live loop channels and mix controls",
@@ -39,14 +49,15 @@ LayersPanel::LayersPanel (AudioEngine& audioEngine)
                          juce::dontSendNotification);
     statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    totalLabel.setText ("Layers: 0   |   Memory: 0 KB", juce::dontSendNotification);
+    totalLabel.setText ("0 layers   |   0 KB", juce::dontSendNotification);
     totalLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
     selectionLabel.setText ("No layer selected", juce::dontSendNotification);
-    gainLabel.setText ("Gain", juce::dontSendNotification);
+    selectionLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::text());
+    gainLabel.setText ("GAIN", juce::dontSendNotification);
     gainLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    panLabel.setText ("Pan", juce::dontSendNotification);
+    panLabel.setText ("PAN", juce::dontSendNotification);
     panLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
     emptyLabel.setJustificationType (juce::Justification::centred);
@@ -55,6 +66,11 @@ LayersPanel::LayersPanel (AudioEngine& audioEngine)
     emptyLabel.setText ("No live layers yet.\nUse Record on the Live tab to create one.",
                         juce::dontSendNotification);
 
+    DarkLookAndFeel::setButtonVariant (clearButton, "dangerSoft");
+    DarkLookAndFeel::setButtonIcon (clearButton, "trash");
+    DarkLookAndFeel::setButtonTextSize (clearButton, 12.5f);
+    clearButton.setTooltip ("Remove every live layer");
+
     clearButton.onClick = [this]
     {
         engine.clearLiveLayers();
@@ -62,6 +78,9 @@ LayersPanel::LayersPanel (AudioEngine& audioEngine)
         refreshSnapshot();
     };
 
+    DarkLookAndFeel::setButtonVariant (deleteButton, "dangerSoft");
+    DarkLookAndFeel::setButtonIcon (deleteButton, "trash");
+    DarkLookAndFeel::setButtonTextSize (deleteButton, 12.5f);
     deleteButton.onClick = [this] { deleteSelectedLayer(); };
 
     muteButton.onClick = [this]
@@ -134,10 +153,10 @@ LayersPanel::LayersPanel (AudioEngine& audioEngine)
     };
     panSlider.updateText();
 
-    listBox.setRowHeight (34);
-    listBox.setColour (juce::ListBox::backgroundColourId, DarkLookAndFeel::panelAlt());
-    listBox.setColour (juce::ListBox::outlineColourId, DarkLookAndFeel::outline());
-    listBox.setOutlineThickness (1);
+    listBox.setRowHeight (48);
+    listBox.setColour (juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
+    listBox.setColour (juce::ListBox::outlineColourId, juce::Colours::transparentBlack);
+    listBox.setOutlineThickness (0);
 
     addAndMakeVisible (titleLabel);
     addAndMakeVisible (subtitleLabel);
@@ -168,60 +187,100 @@ void LayersPanel::paint (juce::Graphics& g)
 {
     g.fillAll (DarkLookAndFeel::background());
 
+    if (! statsPillArea.isEmpty())
+        DarkLookAndFeel::drawPill (g, statsPillArea,
+                                   DarkLookAndFeel::panelAlt().withAlpha (0.72f),
+                                   DarkLookAndFeel::outline(), 9.0f);
+
+    DarkLookAndFeel::drawCard (g, listCardArea);
+    DarkLookAndFeel::drawCard (g, bottomBarArea);
+
+    if (snapshot.layers.empty() && ! emptyIconArea.isEmpty())
+    {
+        g.setColour (DarkLookAndFeel::panelAlt());
+        g.fillEllipse (emptyIconArea.toFloat());
+        g.setColour (DarkLookAndFeel::outline());
+        g.drawEllipse (emptyIconArea.toFloat().reduced (0.5f), 1.0f);
+
+        DarkLookAndFeel::drawIcon (g, "layers", emptyIconArea.toFloat().reduced (17.0f),
+                                   DarkLookAndFeel::accent(), 1.8f);
+    }
+
     if (! bottomBarArea.isEmpty())
     {
-        g.setColour (DarkLookAndFeel::panel());
-        g.fillRoundedRectangle (bottomBarArea.toFloat(), 8.0f);
-        g.setColour (DarkLookAndFeel::outline());
-        g.drawRoundedRectangle (bottomBarArea.toFloat().reduced (0.5f), 8.0f, 1.0f);
+        auto inner = bottomBarArea.reduced (20, 14);
+
+        g.setColour (DarkLookAndFeel::mutedText());
+        g.setFont (DarkLookAndFeel::kicker (10.0f));
+        g.drawText ("SELECTED LAYER", inner.getX(), inner.getY(),
+                    280, 14, juce::Justification::centredLeft, false);
+
+        g.setFont (DarkLookAndFeel::sans (11.0f));
+        g.setColour (DarkLookAndFeel::mutedText().withAlpha (0.8f));
+        g.drawText ("Mute, solo, gain and pan are saved with the session.",
+                    inner.getX(), bottomBarArea.getBottom() - 24,
+                    juce::jmax (240, inner.getWidth() / 3), 16,
+                    juce::Justification::centredLeft, false);
     }
 }
 
 void LayersPanel::resized()
 {
-    auto area = getLocalBounds().reduced (28);
+    auto area = getLocalBounds().reduced (24);
 
-    auto header = area.removeFromTop (56);
-    auto titleArea = header.removeFromLeft (juce::jmin (700, header.getWidth() - 40));
-    titleLabel.setBounds (titleArea.removeFromTop (34));
+    auto header = area.removeFromTop (54);
+    clearButton.setBounds (header.removeFromRight (150).withSizeKeepingCentre (150, 38));
+    header.removeFromRight (10);
+    statsPillArea = header.removeFromRight (210).withSizeKeepingCentre (210, 30);
+    totalLabel.setBounds (statsPillArea.reduced (10, 0));
+
+    auto titleArea = header;
+    titleLabel.setBounds (titleArea.removeFromTop (32));
     subtitleLabel.setBounds (titleArea);
 
     area.removeFromTop (8);
-
-    auto buttons = area.removeFromTop (36);
-    clearButton.setBounds (buttons.removeFromLeft (130));
-
-    area.removeFromTop (8);
-    statusLabel.setBounds (area.removeFromTop (22));
+    statusLabel.setBounds (area.removeFromTop (20));
     area.removeFromTop (8);
 
-    bottomBarArea = area.removeFromBottom (124);
+    bottomBarArea = area.removeFromBottom (148);
     area.removeFromBottom (10);
+    listCardArea = area;
 
-    listArea = area;
+    listArea = listCardArea.reduced (8);
     listBox.setBounds (listArea);
-    emptyLabel.setBounds (listArea);
 
-    auto inner = bottomBarArea.reduced (18, 12);
-    auto left = inner.removeFromLeft (inner.getWidth() / 2);
-    totalLabel.setBounds (left.removeFromTop (22));
-    selectionLabel.setBounds (left.removeFromTop (22));
+    emptyIconArea = juce::Rectangle<int> (56, 56)
+                        .withCentre ({ listCardArea.getCentreX(),
+                                       listCardArea.getCentreY() - 28 });
+    emptyLabel.setBounds (listCardArea.withTrimmedTop (listCardArea.getHeight() / 2 + 8)
+                                      .withTrimmedBottom (20)
+                                      .reduced (30, 0));
 
+    auto inner = bottomBarArea.reduced (20, 12);
+    inner.removeFromTop (16);
+
+    auto left = inner.removeFromLeft (juce::roundToInt (inner.getWidth() * 0.34f));
+    selectionLabel.setBounds (left.removeFromTop (28));
+
+    inner.removeFromLeft (12);
     auto right = inner;
-    auto gainRow = right.removeFromTop (28);
-    gainLabel.setBounds (gainRow.removeFromLeft (56));
-    gainSlider.setBounds (gainRow.removeFromLeft (220));
-    gainRow.removeFromLeft (16);
-    muteButton.setBounds (gainRow.removeFromLeft (80));
-    gainRow.removeFromLeft (8);
-    soloButton.setBounds (gainRow.removeFromLeft (80));
-    gainRow.removeFromLeft (12);
-    deleteButton.setBounds (gainRow.removeFromLeft (90));
+    right.removeFromTop (juce::jmax (0, (right.getHeight() - 76) / 2));
+
+    auto gainRow = right.removeFromTop (34);
+    gainLabel.setBounds (gainRow.removeFromLeft (44));
+
+    deleteButton.setBounds (gainRow.removeFromRight (96));
+    gainRow.removeFromRight (8);
+    soloButton.setBounds (gainRow.removeFromRight (82));
+    gainRow.removeFromRight (8);
+    muteButton.setBounds (gainRow.removeFromRight (82));
+    gainRow.removeFromRight (10);
+    gainSlider.setBounds (gainRow);
 
     right.removeFromTop (8);
-    auto panRow = right.removeFromTop (28);
-    panLabel.setBounds (panRow.removeFromLeft (56));
-    panSlider.setBounds (panRow.removeFromLeft (220));
+    auto panRow = right.removeFromTop (34);
+    panLabel.setBounds (panRow.removeFromLeft (44));
+    panSlider.setBounds (panRow.removeFromLeft (juce::jmin (panRow.getWidth(), 420)));
 }
 
 int LayersPanel::getNumRows()
@@ -235,63 +294,93 @@ void LayersPanel::paintListBoxItem (int rowNumber, juce::Graphics& g,
     if (! juce::isPositiveAndBelow (rowNumber, static_cast<int> (snapshot.layers.size())))
         return;
 
-    if (rowIsSelected)
-    {
-        g.setColour (DarkLookAndFeel::accent().withAlpha (0.18f));
-        g.fillRect (0, 0, width, height);
-    }
-
     const auto& layer = snapshot.layers[static_cast<size_t> (rowNumber)];
 
-    g.setColour (DarkLookAndFeel::text());
-    g.setFont (juce::Font (juce::FontOptions (14.0f)));
-    g.drawText (layer.name, 14, 0, 240, height,
-                juce::Justification::centredLeft, true);
-
-    if (layer.armed)
+    if (rowIsSelected)
     {
-        g.setColour (DarkLookAndFeel::armed());
-        g.setFont (juce::Font (juce::FontOptions (12.0f, juce::Font::bold)));
-        g.drawText ("ARMED", 260, 0, 90, height,
-                    juce::Justification::centredLeft, false);
+        g.setColour (DarkLookAndFeel::accent().withAlpha (0.13f));
+        g.fillRoundedRectangle (juce::Rectangle<float> (6.0f, 2.0f,
+                                                        static_cast<float> (width - 12),
+                                                        static_cast<float> (height - 4)), 8.0f);
     }
-    else if (layer.recording)
+    else if ((rowNumber % 2) == 1)
     {
-        g.setColour (DarkLookAndFeel::recording());
-        g.setFont (juce::Font (juce::FontOptions (12.0f, juce::Font::bold)));
-        g.drawText ("REC", 260, 0, 50, height,
-                    juce::Justification::centredLeft, false);
+        g.setColour (juce::Colours::white.withAlpha (0.012f));
+        g.fillRect (6, 2, width - 12, height - 4);
     }
 
-    g.setColour (DarkLookAndFeel::mutedText());
-    g.setFont (juce::Font (juce::FontOptions (12.0f)));
-    g.drawText (formatDuration (layer.durationSeconds),
-                width - 112, 0, 100, height,
-                juce::Justification::centredRight, false);
+    const std::array<juce::Colour, 5> palette
+    {
+        DarkLookAndFeel::accent(),
+        DarkLookAndFeel::violet(),
+        DarkLookAndFeel::pink(),
+        DarkLookAndFeel::armed(),
+        DarkLookAndFeel::playing()
+    };
 
-    int badgeX = width - 178;
+    const auto stripeColour = layer.recording
+                                ? DarkLookAndFeel::recording()
+                                : layer.armed
+                                    ? DarkLookAndFeel::armed()
+                                    : palette[static_cast<size_t> (std::abs (layer.id)) % palette.size()];
+
+    g.setColour (stripeColour);
+    g.fillRoundedRectangle (16.0f, static_cast<float> (height) * 0.5f - 14.0f,
+                            3.0f, 28.0f, 1.5f);
+
+    g.setColour (DarkLookAndFeel::text().withAlpha (layer.muted ? 0.45f : 1.0f));
+    g.setFont (DarkLookAndFeel::sans (14.0f, rowIsSelected || layer.recording));
+    g.drawFittedText (layer.name, 30, 0, width - 480, height,
+                      juce::Justification::centredLeft, 1, 0.92f);
+
+    auto badgeX = width - 430;
+    const auto drawBadge = [&g, &badgeX] (const juce::String& label, juce::Colour colour)
+    {
+        const auto badgeWidth = juce::jmax (34.0f,
+                                            18.0f + juce::GlyphArrangement::getStringWidth (
+                                                       DarkLookAndFeel::mono (9.0f, true), label));
+        auto badge = juce::Rectangle<float> (static_cast<float> (badgeX), 0.0f,
+                                              badgeWidth, 18.0f);
+
+        g.setColour (colour.withAlpha (0.16f));
+        g.fillRoundedRectangle (badge.withY (15.0f), 4.0f);
+        g.setColour (colour);
+        g.setFont (DarkLookAndFeel::mono (9.0f, true));
+        g.drawText (label, badge.withY (15.0f), juce::Justification::centred, false);
+
+        badgeX += static_cast<int> (badgeWidth) + 6;
+    };
+
+    if (layer.recording)
+        drawBadge ("REC", DarkLookAndFeel::recording());
+    else if (layer.armed)
+        drawBadge ("ARMED", DarkLookAndFeel::armed());
 
     if (layer.muted)
-    {
-        g.setColour (DarkLookAndFeel::armed());
-        g.fillRoundedRectangle (static_cast<float> (badgeX), 9.0f, 22.0f, 16.0f, 3.0f);
-        g.setColour (DarkLookAndFeel::background());
-        g.setFont (juce::Font (juce::FontOptions (10.0f, juce::Font::bold)));
-        g.drawText ("M", badgeX, 9, 22, 16, juce::Justification::centred, false);
-        badgeX += 28;
-    }
+        drawBadge ("MUTE", DarkLookAndFeel::armed());
 
     if (layer.solo)
-    {
-        g.setColour (DarkLookAndFeel::accent());
-        g.fillRoundedRectangle (static_cast<float> (badgeX), 9.0f, 22.0f, 16.0f, 3.0f);
-        g.setColour (DarkLookAndFeel::background());
-        g.setFont (juce::Font (juce::FontOptions (10.0f, juce::Font::bold)));
-        g.drawText ("S", badgeX, 9, 22, 16, juce::Justification::centred, false);
-    }
+        drawBadge ("SOLO", DarkLookAndFeel::accent());
 
-    g.setColour (DarkLookAndFeel::outline().withAlpha (0.5f));
-    g.fillRect (0, height - 1, width, 1);
+    const auto panAmount = juce::roundToInt (std::abs (layer.pan) * 100.0f);
+    const auto panText = panAmount == 0
+                           ? juce::String ("C")
+                           : juce::String (layer.pan < 0.0f ? "L " : "R ") + juce::String (panAmount);
+
+    g.setColour (DarkLookAndFeel::mutedText());
+    g.setFont (DarkLookAndFeel::mono (10.5f));
+    g.drawText (juce::String (juce::roundToInt (layer.gain * 100.0f)) + "%   " + panText,
+                width - 300, 0, 180, height,
+                juce::Justification::centredRight, false);
+
+    g.setColour (DarkLookAndFeel::mutedText());
+    g.setFont (DarkLookAndFeel::mono (11.5f));
+    g.drawText (formatDuration (layer.durationSeconds),
+                width - 108, 0, 90, height,
+                juce::Justification::centredRight, false);
+
+    g.setColour (DarkLookAndFeel::outlineSoft().withAlpha (0.6f));
+    g.fillRect (16, height - 1, width - 32, 1);
 }
 
 void LayersPanel::selectedRowsChanged (int lastRowSelected)
@@ -356,8 +445,9 @@ void LayersPanel::refreshSnapshot()
 
     listBox.repaint();
 
-    totalLabel.setText ("Layers: " + juce::String (count)
-                            + "   |   Memory: " + formatBytes (snapshot.totalMemoryUsageBytes),
+    totalLabel.setText (juce::String (count)
+                            + (count == 1 ? " layer" : " layers")
+                            + "   |   " + formatBytes (snapshot.totalMemoryUsageBytes),
                         juce::dontSendNotification);
 
     emptyLabel.setVisible (count == 0);

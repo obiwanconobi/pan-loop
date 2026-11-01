@@ -36,6 +36,9 @@ private:
     juce::AudioDeviceManager& deviceManager;
     AudioEngine& engine;
 
+    juce::Label titleLabel;
+    juce::Label subtitleLabel;
+
     juce::GroupComponent deviceGroup { "Audio device", "Audio device" };
     juce::GroupComponent mixGroup { "Monitoring and test", "Monitoring and test" };
 

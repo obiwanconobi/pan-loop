@@ -59,6 +59,10 @@ private:
     juce::Rectangle<int> buttonArea;
     juce::Rectangle<int> infoArea;
     juce::Rectangle<int> meterArea;
+    juce::Rectangle<int> backingColumn;
+    juce::Rectangle<int> layerColumn;
+    juce::Rectangle<int> tempoColumn;
+    bool wasRecording = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PerformancePanel)
 };

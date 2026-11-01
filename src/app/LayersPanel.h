@@ -58,7 +58,10 @@ private:
     juce::ListBox listBox { "live layers", this };
 
     juce::Rectangle<int> listArea;
+    juce::Rectangle<int> listCardArea;
     juce::Rectangle<int> bottomBarArea;
+    juce::Rectangle<int> emptyIconArea;
+    juce::Rectangle<int> statsPillArea;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LayersPanel)
 };

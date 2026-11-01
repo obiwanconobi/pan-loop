@@ -41,9 +41,12 @@ private:
     juce::Label stateLabel;
 
     juce::Rectangle<int> transportCard;
+    juce::Rectangle<int> tempoCard;
     juce::Rectangle<int> loopCard;
     juce::Rectangle<int> beatIndicatorArea;
     juce::Rectangle<int> barProgressArea;
+    juce::Rectangle<int> statePillArea;
+    juce::Rectangle<int> loopStatusDotArea;
 
     juce::Label barBeatLabel;
     juce::Label timeLabel;

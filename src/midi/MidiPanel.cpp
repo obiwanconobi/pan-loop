@@ -7,11 +7,20 @@ namespace
 {
     void styleLabel (juce::Label& label, float height, bool bold = false)
     {
-        label.setFont (juce::Font (juce::FontOptions (height,
-                                                      bold ? juce::Font::bold : juce::Font::plain)));
-        label.setColour (juce::Label::textColourId, DarkLookAndFeel::text());
-        label.setJustificationType (juce::Justification::centredLeft);
+        DarkLookAndFeel::styleLabel (label, height, bold);
     }
+}
+
+void MidiActivityLight::paint (juce::Graphics& g)
+{
+    auto bounds = getLocalBounds().toFloat();
+    const auto colour = active ? DarkLookAndFeel::playing() : DarkLookAndFeel::outline();
+
+    g.setColour (colour.withAlpha (active ? 0.18f : 0.0f));
+    g.fillEllipse (bounds.reduced (1.0f));
+
+    g.setColour (colour);
+    g.fillEllipse (bounds.reduced (6.0f));
 }
 
 MidiPanel::MidiPanel (MidiManager& midiManager)
@@ -24,23 +33,29 @@ MidiPanel::MidiPanel (MidiManager& midiManager)
     logGroup.setColour (juce::GroupComponent::outlineColourId, DarkLookAndFeel::outline());
     logGroup.setColour (juce::GroupComponent::textColourId, DarkLookAndFeel::mutedText());
 
-    styleLabel (deviceLabel, 14.0f);
-    styleLabel (statusLabel, 13.0f, true);
-    styleLabel (lastMessageLabel, 13.0f);
-    styleLabel (hintLabel, 12.0f);
-    styleLabel (mappingHintLabel, 12.0f);
-    styleLabel (profileLabel, 14.0f);
-    styleLabel (profileStatusLabel, 12.0f);
+    styleLabel (titleLabel, 28.0f, true);
+    styleLabel (subtitleLabel, 12.5f);
+    titleLabel.setFont (DarkLookAndFeel::sans (28.0f, true)
+                            .withExtraKerningFactor (0.02f));
+    titleLabel.setText ("MIDI", juce::dontSendNotification);
+    subtitleLabel.setFont (DarkLookAndFeel::sans (12.5f));
+    subtitleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+    subtitleLabel.setText ("Footswitch control, device input and presets", juce::dontSendNotification);
 
-    deviceLabel.setText ("Device", juce::dontSendNotification);
+    deviceLabel.setFont (DarkLookAndFeel::kicker (10.5f));
+    deviceLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+    statusLabel.setFont (DarkLookAndFeel::sans (12.0f, true));
+    lastMessageLabel.setFont (DarkLookAndFeel::mono (11.5f));
+    mappingHintLabel.setFont (DarkLookAndFeel::mono (10.5f));
+    profileLabel.setFont (DarkLookAndFeel::kicker (10.5f));
+    profileLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+    profileStatusLabel.setFont (DarkLookAndFeel::sans (11.0f));
+
+    deviceLabel.setText ("DEVICE", juce::dontSendNotification);
     statusLabel.setText ("No MIDI input selected", juce::dontSendNotification);
     lastMessageLabel.setText ("No MIDI activity yet.", juce::dontSendNotification);
-    hintLabel.setText ("Choose an input, learn the footswitches, then save the setup as a preset.",
-                       juce::dontSendNotification);
-    hintLabel.setJustificationType (juce::Justification::topLeft);
-    hintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    profileLabel.setText ("Preset", juce::dontSendNotification);
+    profileLabel.setText ("PRESET", juce::dontSendNotification);
     profileStatusLabel.setText ("No preset selected.", juce::dontSendNotification);
     profileStatusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
     profileStatusLabel.setJustificationType (juce::Justification::centredLeft);
@@ -49,7 +64,7 @@ MidiPanel::MidiPanel (MidiManager& midiManager)
     deleteProfileButton.setTooltip ("Delete the selected MIDI preset");
     profileBox.setTooltip ("Choose a saved MIDI preset to restore its device and mappings");
 
-    profileNameEditor.setFont (juce::Font (juce::FontOptions (14.0f)));
+    profileNameEditor.setFont (juce::Font (juce::FontOptions (13.5f)));
     profileNameEditor.setTextToShowWhenEmpty ("Preset name", DarkLookAndFeel::mutedText());
     profileNameEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0f1115));
     profileNameEditor.setColour (juce::TextEditor::textColourId, DarkLookAndFeel::text());
@@ -69,19 +84,20 @@ MidiPanel::MidiPanel (MidiManager& midiManager)
     logEditor.setCaretVisible (false);
     logEditor.setPopupMenuEnabled (true);
     logEditor.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(),
-                                                      12.0f,
+                                                      11.5f,
                                                       juce::Font::plain)));
     logEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0f1115));
     logEditor.setColour (juce::TextEditor::textColourId, DarkLookAndFeel::text());
     logEditor.setColour (juce::TextEditor::outlineColourId, DarkLookAndFeel::outline());
 
+    addAndMakeVisible (titleLabel);
+    addAndMakeVisible (subtitleLabel);
     addAndMakeVisible (deviceGroup);
     addAndMakeVisible (mappingGroup);
     addAndMakeVisible (logGroup);
     addAndMakeVisible (deviceLabel);
     addAndMakeVisible (statusLabel);
     addAndMakeVisible (lastMessageLabel);
-    addAndMakeVisible (hintLabel);
     addAndMakeVisible (mappingHintLabel);
     addAndMakeVisible (deviceBox);
     addAndMakeVisible (rescanButton);
@@ -92,6 +108,21 @@ MidiPanel::MidiPanel (MidiManager& midiManager)
     addAndMakeVisible (saveProfileButton);
     addAndMakeVisible (deleteProfileButton);
     addAndMakeVisible (logEditor);
+    addAndMakeVisible (activityLight);
+
+    DarkLookAndFeel::setButtonVariant (rescanButton, "ghost");
+    DarkLookAndFeel::setButtonIcon (rescanButton, "loop");
+    DarkLookAndFeel::setButtonTextSize (rescanButton, 11.5f);
+    DarkLookAndFeel::setButtonVariant (saveProfileButton, "accent");
+    DarkLookAndFeel::setButtonIcon (saveProfileButton, "save");
+    DarkLookAndFeel::setButtonTextSize (saveProfileButton, 11.5f);
+    DarkLookAndFeel::setButtonVariant (deleteProfileButton, "dangerSoft");
+    DarkLookAndFeel::setButtonIcon (deleteProfileButton, "trash");
+    DarkLookAndFeel::setButtonTextSize (deleteProfileButton, 11.5f);
+
+    deviceBox.setTooltip ("Choose the MIDI input that your footswitch is connected to");
+    profileBox.setTooltip ("Restore a saved MIDI device and footswitch mapping preset");
+    profileNameEditor.setTooltip ("Name for the current device and mappings");
 
     buildMappingRows();
 
@@ -186,75 +217,88 @@ MidiPanel::MidiPanel (MidiManager& midiManager)
 
 void MidiPanel::resized()
 {
-    auto area = getLocalBounds().reduced (18);
+    auto area = getLocalBounds().reduced (20);
 
-    deviceGroup.setBounds (area.removeFromTop (230));
+    auto header = area.removeFromTop (44);
+    auto titleArea = header.removeFromLeft (header.getWidth());
+    titleLabel.setBounds (titleArea.removeFromTop (30));
+    subtitleLabel.setBounds (titleArea);
+
     area.removeFromTop (10);
-    mappingGroup.setBounds (area.removeFromTop (280));
-    area.removeFromTop (10);
-    logGroup.setBounds (area);
+
+    auto left = area.removeFromLeft (juce::roundToInt (area.getWidth() * 0.60f));
+    area.removeFromLeft (12);
+    auto right = area;
+
+    const auto deviceHeight = juce::jlimit (180, 200,
+                                            juce::roundToInt (static_cast<float> (left.getHeight()) * 0.32f));
+    deviceGroup.setBounds (left.removeFromTop (deviceHeight));
+    left.removeFromTop (10);
+    mappingGroup.setBounds (left);
+    logGroup.setBounds (right);
 
     {
         auto inner = deviceGroup.getLocalBounds().reduced (14);
         inner.translate (deviceGroup.getX(), deviceGroup.getY());
-        inner.removeFromTop (12);
+        inner.removeFromTop (10);
 
         auto row = inner.removeFromTop (30);
-        deviceLabel.setBounds (row.removeFromLeft (75));
-        deviceBox.setBounds (row.removeFromLeft (360));
-        row.removeFromLeft (10);
-        rescanButton.setBounds (row.removeFromLeft (100));
-        row.removeFromLeft (12);
-        activityBounds = row.removeFromLeft (36).reduced (10);
+        deviceLabel.setBounds (row.removeFromLeft (64));
+        rescanButton.setBounds (row.removeFromRight (96));
+        row.removeFromRight (8);
+        activityLight.setBounds (row.removeFromRight (22).withSizeKeepingCentre (22, 22));
+        row.removeFromRight (8);
+        deviceBox.setBounds (row);
 
         inner.removeFromTop (8);
         row = inner.removeFromTop (30);
-        profileLabel.setBounds (row.removeFromLeft (75));
-        profileBox.setBounds (row.removeFromLeft (240));
-        row.removeFromLeft (8);
-        profileNameEditor.setBounds (row.removeFromLeft (180).reduced (0, 1));
-        row.removeFromLeft (8);
-        saveProfileButton.setBounds (row.removeFromLeft (90).reduced (0, 1));
-        row.removeFromLeft (8);
-        deleteProfileButton.setBounds (row.removeFromLeft (80).reduced (0, 1));
-
-        inner.removeFromTop (4);
-        profileStatusLabel.setBounds (inner.removeFromTop (18));
-
-        inner.removeFromTop (6);
-        statusLabel.setBounds (inner.removeFromTop (22));
-
-        inner.removeFromTop (4);
-        lastMessageLabel.setBounds (inner.removeFromTop (22));
+        profileLabel.setBounds (row.removeFromLeft (64));
+        deleteProfileButton.setBounds (row.removeFromRight (82));
+        row.removeFromRight (8);
+        profileBox.setBounds (row);
 
         inner.removeFromTop (8);
-        hintLabel.setBounds (inner.removeFromTop (34));
+        row = inner.removeFromTop (30);
+        saveProfileButton.setBounds (row.removeFromRight (80));
+        row.removeFromRight (8);
+        profileNameEditor.setBounds (row);
+
+        inner.removeFromTop (6);
+        profileStatusLabel.setBounds (inner.removeFromTop (16));
+        inner.removeFromTop (4);
+        statusLabel.setBounds (inner.removeFromTop (18));
     }
 
     {
         auto inner = mappingGroup.getLocalBounds().reduced (14);
         inner.translate (mappingGroup.getX(), mappingGroup.getY());
-        inner.removeFromTop (12);
+        inner.removeFromTop (10);
 
-        mappingHintLabel.setBounds (inner.removeFromTop (20));
-        inner.removeFromTop (4);
+        mappingHintLabel.setBounds (inner.removeFromTop (16));
+        inner.removeFromTop (6);
+
+        const auto rowHeight = juce::jlimit (22, 34,
+                                             (inner.getHeight() - 4) / static_cast<int> (mappingRows.size()));
 
         for (auto& row : mappingRows)
         {
-            auto rowArea = inner.removeFromTop (27);
-            row->actionLabel.setBounds (rowArea.removeFromLeft (170));
-            row->mappingLabel.setBounds (rowArea.removeFromLeft (250));
-            rowArea.removeFromLeft (10);
-            row->learnButton.setBounds (rowArea.removeFromLeft (100).reduced (0, 1));
-            rowArea.removeFromLeft (8);
-            row->clearButton.setBounds (rowArea.removeFromLeft (76).reduced (0, 1));
+            auto rowArea = inner.removeFromTop (rowHeight);
+            rowArea = rowArea.reduced (0, 1);
+            row->actionLabel.setBounds (rowArea.removeFromLeft (150));
+            row->clearButton.setBounds (rowArea.removeFromRight (74));
+            rowArea.removeFromRight (8);
+            row->learnButton.setBounds (rowArea.removeFromRight (94));
+            rowArea.removeFromRight (10);
+            row->mappingLabel.setBounds (rowArea);
         }
     }
 
     {
         auto inner = logGroup.getLocalBounds().reduced (14);
         inner.translate (logGroup.getX(), logGroup.getY());
-        inner.removeFromTop (12);
+        inner.removeFromTop (10);
+        lastMessageLabel.setBounds (inner.removeFromTop (22));
+        inner.removeFromTop (8);
         logEditor.setBounds (inner);
     }
 }
@@ -262,13 +306,6 @@ void MidiPanel::resized()
 void MidiPanel::paint (juce::Graphics& g)
 {
     g.fillAll (DarkLookAndFeel::background());
-
-    if (! activityBounds.isEmpty())
-    {
-        g.setColour (activityHoldTicks > 0 ? DarkLookAndFeel::playing()
-                                           : DarkLookAndFeel::outline());
-        g.fillEllipse (activityBounds.toFloat());
-    }
 }
 
 void MidiPanel::timerCallback()
@@ -291,7 +328,7 @@ void MidiPanel::timerCallback()
     if (activityHoldTicks > 0)
         --activityHoldTicks;
 
-    repaint (activityBounds);
+    activityLight.setActive (activityHoldTicks > 0);
 
     const auto enabled = midi.getEnabledDeviceIdentifier();
     const auto learning = midi.getLearningAction();
@@ -490,7 +527,8 @@ void MidiPanel::buildMappingRows()
         row->action = action;
 
         styleLabel (row->actionLabel, 13.0f);
-        styleLabel (row->mappingLabel, 12.0f);
+        styleLabel (row->mappingLabel, 11.5f);
+        row->mappingLabel.setFont (DarkLookAndFeel::mono (11.0f));
         row->mappingLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
         row->actionLabel.setText (getMidiActionName (action), juce::dontSendNotification);
@@ -500,6 +538,13 @@ void MidiPanel::buildMappingRows()
         row->clearButton.setButtonText ("Clear");
         row->learnButton.setTooltip ("Listen for the next footswitch press");
         row->clearButton.setTooltip ("Remove this mapping");
+
+        DarkLookAndFeel::setButtonVariant (row->learnButton, "accent");
+        DarkLookAndFeel::setButtonIcon (row->learnButton, "listen");
+        DarkLookAndFeel::setButtonTextSize (row->learnButton, 11.5f);
+        DarkLookAndFeel::setButtonVariant (row->clearButton, "ghost");
+        DarkLookAndFeel::setButtonIcon (row->clearButton, "x");
+        DarkLookAndFeel::setButtonTextSize (row->clearButton, 11.5f);
 
         row->learnButton.onClick = [this, action]
         {
@@ -551,12 +596,8 @@ void MidiPanel::updateMappingRows()
         const auto isLearning = learning.has_value() && *learning == row->action;
 
         row->learnButton.setButtonText (isLearning ? "Listening..." : "Learn");
-        row->learnButton.setColour (juce::TextButton::buttonColourId,
-                                    isLearning ? DarkLookAndFeel::armed().withAlpha (0.25f)
-                                               : juce::Colour (0xff2a2f38));
-        row->learnButton.setColour (juce::TextButton::textColourOffId,
-                                    isLearning ? DarkLookAndFeel::armed()
-                                               : DarkLookAndFeel::text());
+        DarkLookAndFeel::setButtonVariant (row->learnButton,
+                                           isLearning ? "warning" : "accent");
         row->learnButton.setEnabled (hasDevice || isLearning);
         row->clearButton.setEnabled (mapping.has_value());
     }

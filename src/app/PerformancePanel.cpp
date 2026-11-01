@@ -12,23 +12,20 @@
 
 namespace
 {
-    class StageLookAndFeel final : public juce::LookAndFeel_V4
+    class StageLookAndFeel final : public DarkLookAndFeel
     {
     public:
         juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
         {
-            return juce::Font (juce::FontOptions (
-                juce::jlimit (18.0f, 34.0f, static_cast<float> (buttonHeight) * 0.26f),
-                juce::Font::bold));
+            return DarkLookAndFeel::sans (
+                juce::jlimit (18.0f, 32.0f, static_cast<float> (buttonHeight) * 0.24f),
+                true);
         }
     };
 
     void styleLabel (juce::Label& label, float height, bool bold = false)
     {
-        label.setFont (juce::Font (juce::FontOptions (height,
-                                                      bold ? juce::Font::bold : juce::Font::plain)));
-        label.setColour (juce::Label::textColourId, DarkLookAndFeel::text());
-        label.setJustificationType (juce::Justification::centredLeft);
+        DarkLookAndFeel::styleLabel (label, height, bold);
     }
 
     juce::String formatTime (double seconds)
@@ -43,14 +40,6 @@ namespace
              + ":" + juce::String (wholeSeconds).paddedLeft ('0', 2)
              + "." + juce::String (milliseconds).paddedLeft ('0', 3);
     }
-
-    void styleStageButton (juce::TextButton& button, juce::Colour colour)
-    {
-        button.setColour (juce::TextButton::buttonColourId, colour.withAlpha (0.16f));
-        button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.34f));
-        button.setColour (juce::TextButton::textColourOffId, DarkLookAndFeel::text());
-        button.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
-    }
 }
 
 PerformancePanel::PerformancePanel (AudioEngine& audioEngine)
@@ -62,14 +51,24 @@ PerformancePanel::PerformancePanel (AudioEngine& audioEngine)
 
     stageLook = std::make_unique<StageLookAndFeel>();
 
-    styleLabel (stateLabel, 68.0f, true);
+    styleLabel (stateLabel, 64.0f, true);
     styleLabel (timeLabel, 38.0f, true);
     styleLabel (backingLabel, 22.0f, true);
-    styleLabel (layerLabel, 18.0f);
-    styleLabel (tempoLabel, 16.0f);
-    styleLabel (hintLabel, 13.0f);
-    styleLabel (inputMeterLabel, 12.0f, true);
-    styleLabel (outputMeterLabel, 12.0f, true);
+    styleLabel (layerLabel, 20.0f, true);
+    styleLabel (tempoLabel, 18.0f);
+    styleLabel (hintLabel, 10.5f);
+    styleLabel (inputMeterLabel, 10.0f, true);
+    styleLabel (outputMeterLabel, 10.0f, true);
+
+    stateLabel.setFont (DarkLookAndFeel::sans (64.0f, true)
+                            .withExtraKerningFactor (0.02f));
+    timeLabel.setFont (DarkLookAndFeel::mono (38.0f, true));
+    backingLabel.setFont (DarkLookAndFeel::sans (22.0f, true));
+    layerLabel.setFont (DarkLookAndFeel::sans (20.0f, true));
+    tempoLabel.setFont (DarkLookAndFeel::mono (18.0f, true));
+    hintLabel.setFont (DarkLookAndFeel::mono (10.5f));
+    inputMeterLabel.setFont (DarkLookAndFeel::kicker (10.0f));
+    outputMeterLabel.setFont (DarkLookAndFeel::kicker (10.0f));
 
     stateLabel.setText ("STOPPED", juce::dontSendNotification);
     stateLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
@@ -91,18 +90,38 @@ PerformancePanel::PerformancePanel (AudioEngine& audioEngine)
                        juce::dontSendNotification);
     hintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    inputMeterLabel.setText ("IN", juce::dontSendNotification);
+    inputMeterLabel.setText ("INPUT", juce::dontSendNotification);
     inputMeterLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
     inputMeterLabel.setJustificationType (juce::Justification::centred);
 
-    outputMeterLabel.setText ("OUT", juce::dontSendNotification);
+    outputMeterLabel.setText ("OUTPUT", juce::dontSendNotification);
     outputMeterLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
     outputMeterLabel.setJustificationType (juce::Justification::centred);
 
-    styleStageButton (recordButton, DarkLookAndFeel::recording());
-    styleStageButton (stopRecButton, DarkLookAndFeel::armed());
-    styleStageButton (discardButton, DarkLookAndFeel::mutedText());
-    styleStageButton (playPauseButton, DarkLookAndFeel::playing());
+    DarkLookAndFeel::setButtonVariant (recordButton, "danger");
+    DarkLookAndFeel::setButtonIcon (recordButton, "record");
+    DarkLookAndFeel::setButtonVariant (stopRecButton, "warning");
+    DarkLookAndFeel::setButtonIcon (stopRecButton, "stop");
+    DarkLookAndFeel::setButtonVariant (discardButton, "dangerSoft");
+    DarkLookAndFeel::setButtonIcon (discardButton, "trash");
+    DarkLookAndFeel::setButtonVariant (playPauseButton, "primary");
+    DarkLookAndFeel::setButtonIcon (playPauseButton, "play");
+
+    DarkLookAndFeel::setButtonVariant (backingMuteButton, "default");
+    DarkLookAndFeel::setButtonIcon (backingMuteButton, "volume");
+    DarkLookAndFeel::setButtonTextSize (backingMuteButton, 14.0f);
+    DarkLookAndFeel::setButtonVariant (clearLayersButton, "ghost");
+    DarkLookAndFeel::setButtonIcon (clearLayersButton, "trash");
+    DarkLookAndFeel::setButtonTextSize (clearLayersButton, 14.0f);
+    DarkLookAndFeel::setButtonVariant (metronomeButton, "default");
+    DarkLookAndFeel::setButtonIcon (metronomeButton, "metronome");
+    DarkLookAndFeel::setButtonTextSize (metronomeButton, 14.0f);
+    DarkLookAndFeel::setButtonVariant (fullScreenButton, "ghost");
+    DarkLookAndFeel::setButtonIcon (fullScreenButton, "expand");
+    DarkLookAndFeel::setButtonTextSize (fullScreenButton, 14.0f);
+    DarkLookAndFeel::setButtonVariant (exitButton, "ghost");
+    DarkLookAndFeel::setButtonIcon (exitButton, "x");
+    DarkLookAndFeel::setButtonTextSize (exitButton, 14.0f);
 
     recordButton.onClick = [this] { startRecording(); };
     stopRecButton.onClick = [this] { stopRecording(); };
@@ -192,28 +211,73 @@ void PerformancePanel::visibilityChanged()
 
 void PerformancePanel::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff0e1014));
+    juce::ColourGradient backgroundGradient (juce::Colour (0xff0c1017), 0.0f, 0.0f,
+                                             juce::Colour (0xff06080c),
+                                             0.0f, static_cast<float> (getHeight()), false);
+    g.setGradientFill (backgroundGradient);
+    g.fillAll();
+
+    const auto recordingNow = engine.getLiveLooper().isRecording();
+    const auto glowColour = recordingNow ? DarkLookAndFeel::recording()
+                                         : DarkLookAndFeel::accent();
 
     auto header = headerArea.toFloat();
 
     if (! header.isEmpty())
     {
-        juce::ColourGradient glow (DarkLookAndFeel::accent().withAlpha (0.08f),
-                                   header.getTopLeft(),
-                                   juce::Colours::transparentBlack,
-                                   header.getBottomRight(),
-                                   true);
-        g.setGradientFill (glow);
+        g.setGradientFill (juce::ColourGradient (glowColour.withAlpha (recordingNow ? 0.13f : 0.07f),
+                                                 header.getTopLeft(),
+                                                 juce::Colours::transparentBlack,
+                                                 header.getBottomRight(),
+                                                 true));
         g.fillRoundedRectangle (header.expanded (12.0f), 16.0f);
+
+        g.setColour (DarkLookAndFeel::accent());
+        g.setFont (DarkLookAndFeel::kicker (11.0f));
+        g.drawText ("PAN LOOP  /  LIVE PERFORMANCE",
+                    headerArea.getX(), headerArea.getY() - 2,
+                    headerArea.getWidth(), 18,
+                    juce::Justification::centredLeft, false);
     }
 
-    if (progressArea.isEmpty())
+    if (infoArea.isEmpty())
         return;
+
+    DarkLookAndFeel::drawCard (g, infoArea);
+    DarkLookAndFeel::drawCard (g, meterArea);
+
+    if (! backingColumn.isEmpty())
+    {
+        g.setColour (DarkLookAndFeel::mutedText());
+        g.setFont (DarkLookAndFeel::kicker (10.0f));
+        g.drawText ("BACKING TRACK", backingColumn.getX(), backingColumn.getY(),
+                    backingColumn.getWidth(), 16,
+                    juce::Justification::centredLeft, false);
+        g.drawText ("LIVE LAYERS", layerColumn.getX(), layerColumn.getY(),
+                    layerColumn.getWidth(), 16,
+                    juce::Justification::centredLeft, false);
+        g.drawText ("TEMPO", tempoColumn.getX(), tempoColumn.getY(),
+                    tempoColumn.getWidth(), 16,
+                    juce::Justification::centredLeft, false);
+
+        g.setColour (DarkLookAndFeel::outlineSoft());
+        g.drawLine (static_cast<float> (layerColumn.getX() - 14),
+                    static_cast<float> (backingColumn.getY() + 2),
+                    static_cast<float> (layerColumn.getX() - 14),
+                    static_cast<float> (backingColumn.getBottom() - 4), 1.0f);
+        g.drawLine (static_cast<float> (tempoColumn.getX() - 14),
+                    static_cast<float> (backingColumn.getY() + 2),
+                    static_cast<float> (tempoColumn.getX() - 14),
+                    static_cast<float> (backingColumn.getBottom() - 4), 1.0f);
+    }
 
     const auto info = engine.getTransport().getPositionInfo();
     auto bar = progressArea.toFloat();
 
-    g.setColour (juce::Colour (0xff1b1f26));
+    if (bar.isEmpty())
+        return;
+
+    g.setColour (juce::Colour (0xff171d27));
     g.fillRoundedRectangle (bar, 9.0f);
 
     double phase = 0.0;
@@ -227,16 +291,31 @@ void PerformancePanel::paint (juce::Graphics& g)
 
     if (phase > 0.0)
     {
-        const auto colour = engine.getLiveLooper().isRecording()
+        const auto colour = recordingNow
                               ? DarkLookAndFeel::recording()
                               : (info.state == Transport::State::Playing
                                    ? DarkLookAndFeel::accent()
-                                   : DarkLookAndFeel::mutedText());
+                                   : DarkLookAndFeel::armed());
+
+        const auto filledWidth = juce::jmax (9.0f, bar.getWidth() * static_cast<float> (phase));
+
+        juce::ColourGradient fill (DarkLookAndFeel::accentDeep(), bar.getTopLeft(),
+                                   colour, bar.getTopRight(), false);
+
+        if (recordingNow)
+            fill = juce::ColourGradient (DarkLookAndFeel::recording().darker (0.25f), bar.getTopLeft(),
+                                         DarkLookAndFeel::recording(), bar.getTopRight(), false);
+
+        g.setGradientFill (fill);
+        g.fillRoundedRectangle (bar.withWidth (filledWidth), 9.0f);
+
+        g.setColour (colour.withAlpha (0.18f));
+        g.fillEllipse (bar.getX() + filledWidth - 16.0f, bar.getCentreY() - 16.0f,
+                       32.0f, 32.0f);
 
         g.setColour (colour);
-        g.fillRoundedRectangle (bar.withWidth (juce::jmax (9.0f,
-                                                          bar.getWidth() * static_cast<float> (phase))),
-                                9.0f);
+        g.fillEllipse (bar.getX() + filledWidth - 5.5f, bar.getCentreY() - 5.5f,
+                       11.0f, 11.0f);
     }
 
     if (info.cycleLengthSamples > 0)
@@ -245,7 +324,7 @@ void PerformancePanel::paint (juce::Graphics& g)
 
         if (samplesPerBar > 1.0)
         {
-            g.setColour (DarkLookAndFeel::background().withAlpha (0.45f));
+            g.setColour (DarkLookAndFeel::background().withAlpha (0.55f));
 
             for (double position = samplesPerBar;
                  position < static_cast<double> (info.cycleLengthSamples);
@@ -254,7 +333,7 @@ void PerformancePanel::paint (juce::Graphics& g)
                 const auto x = bar.getX()
                              + bar.getWidth() * static_cast<float> (
                                    position / static_cast<double> (info.cycleLengthSamples));
-                g.fillRect (x, bar.getY() + 3.0f, 1.0f, bar.getHeight() - 6.0f);
+                g.fillRect (x, bar.getY() + 4.0f, 1.0f, bar.getHeight() - 8.0f);
             }
         }
     }
@@ -268,9 +347,10 @@ void PerformancePanel::resized()
     auto area = getLocalBounds().reduced (juce::jmax (18, getWidth() / 40),
                                           juce::jmax (16, getHeight() / 40));
 
-    headerArea = area.removeFromTop (juce::jmax (100, getHeight() / 6));
+    headerArea = area.removeFromTop (juce::jmax (104, getHeight() / 6));
     {
         auto header = headerArea;
+        header.removeFromTop (22);
         stateLabel.setBounds (header.removeFromLeft (header.getWidth() * 3 / 5));
         timeLabel.setBounds (header);
     }
@@ -279,7 +359,7 @@ void PerformancePanel::resized()
     progressArea = area.removeFromTop (juce::jlimit (20, 38, getHeight() / 24));
     area.removeFromTop (juce::jmax (18, getHeight() / 28));
 
-    const auto buttonHeight = juce::jlimit (96, 340, area.getHeight() * 42 / 100);
+    const auto buttonHeight = juce::jlimit (96, 420, area.getHeight() * 50 / 100);
     buttonArea = area.removeFromTop (buttonHeight);
 
     {
@@ -297,7 +377,7 @@ void PerformancePanel::resized()
 
     area.removeFromTop (juce::jmax (16, getHeight() / 30));
 
-    const auto secondaryHeight = juce::jlimit (30, 52, area.getHeight() / 6);
+    const auto secondaryHeight = juce::jlimit (32, 52, area.getHeight() / 6);
     auto secondary = area.removeFromTop (secondaryHeight);
     const auto secondaryGap = juce::jmax (6, getWidth() / 180);
     const auto secondaryWidth = juce::jlimit (110, 210, secondary.getWidth() / 7);
@@ -314,28 +394,36 @@ void PerformancePanel::resized()
 
     area.removeFromTop (juce::jmax (12, getHeight() / 40));
 
-    meterArea = area.removeFromRight (juce::jlimit (90, 150, getWidth() / 10));
+    meterArea = area.removeFromRight (juce::jlimit (96, 160, getWidth() / 10));
     {
-        auto meters = meterArea;
-        const auto labelHeight = 20;
-        const auto meterWidth = (meters.getWidth() - 16) / 2;
+        auto meters = meterArea.reduced (14, 12);
+        const auto labelHeight = 18;
+        const auto meterWidth = (meters.getWidth() - 20) / 2;
 
         auto inputArea = meters.removeFromLeft (meterWidth);
         inputMeterLabel.setBounds (inputArea.removeFromTop (labelHeight));
-        inputMeter->setBounds (inputArea.reduced (0, 4));
+        inputMeter->setBounds (inputArea.reduced (0, 6));
 
-        meters.removeFromLeft (16);
+        meters.removeFromLeft (20);
         auto outputArea = meters.removeFromLeft (meterWidth);
         outputMeterLabel.setBounds (outputArea.removeFromTop (labelHeight));
-        outputMeter->setBounds (outputArea.reduced (0, 4));
+        outputMeter->setBounds (outputArea.reduced (0, 6));
     }
 
     area.removeFromRight (12);
     infoArea = area;
-    backingLabel.setBounds (infoArea.removeFromTop (juce::jlimit (28, 48, infoArea.getHeight() / 3)));
-    layerLabel.setBounds (infoArea.removeFromTop (28));
-    tempoLabel.setBounds (infoArea.removeFromTop (26));
-    hintLabel.setBounds (infoArea.removeFromBottom (20));
+
+    auto infoInner = infoArea.reduced (20, 16);
+    hintLabel.setBounds (infoInner.removeFromBottom (18));
+    infoInner.removeFromBottom (8);
+
+    backingColumn = infoInner.removeFromLeft (juce::roundToInt (static_cast<float> (infoInner.getWidth()) * 0.55f));
+    layerColumn = infoInner.removeFromLeft (juce::roundToInt (static_cast<float> (infoInner.getWidth()) * 0.48f));
+    tempoColumn = infoInner;
+
+    backingLabel.setBounds (backingColumn.withTrimmedTop (22).withHeight (34));
+    layerLabel.setBounds (layerColumn.withTrimmedTop (22).withHeight (30));
+    tempoLabel.setBounds (tempoColumn.withTrimmedTop (22).withHeight (24));
 }
 
 void PerformancePanel::timerCallback()
@@ -460,12 +548,18 @@ void PerformancePanel::updateControls()
     if (playPauseButton.getButtonText() != playText)
         playPauseButton.setButtonText (playText);
 
-    playPauseButton.setEnabled (! recording && ! armed);
+    DarkLookAndFeel::setButtonVariant (playPauseButton,
+                                       info.state == Transport::State::Playing
+                                           ? "success" : "primary");
+    DarkLookAndFeel::setButtonIcon (playPauseButton,
+                                    info.state == Transport::State::Playing
+                                        ? "pause" : "play");
 
-    recordButton.setColour (juce::TextButton::buttonColourId,
-                            recording ? DarkLookAndFeel::recording().withAlpha (0.38f)
-                                      : DarkLookAndFeel::recording().withAlpha (0.16f));
+    playPauseButton.setEnabled (! recording && ! armed);
+    recordButton.setEnabled (! recording && ! armed);
     stopRecButton.setEnabled (recording || armed);
+    discardButton.setEnabled (recording || armed || ! layerSnapshot.layers.empty());
+    clearLayersButton.setEnabled (! layerSnapshot.layers.empty());
 
     if (backingMuteButton.getToggleState() != engine.isBackingMuted())
         backingMuteButton.setToggleState (engine.isBackingMuted(), juce::dontSendNotification);
@@ -476,6 +570,14 @@ void PerformancePanel::updateControls()
 
     inputMeter->setLevel (engine.getInputLevel());
     outputMeter->setLevel (engine.getOutputLevel());
+
+    repaint (progressArea);
+
+    if (wasRecording != recording)
+    {
+        wasRecording = recording;
+        repaint (headerArea);
+    }
 }
 
 void PerformancePanel::startRecording()

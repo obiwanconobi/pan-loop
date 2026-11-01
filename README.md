@@ -167,7 +167,7 @@ Implemented so far:
 - **ALSA raw-MIDI fallback** for USB devices that PipeWire takes over and therefore never appears as an ALSA sequencer client (shown with a `(raw MIDI)` suffix)
 - **Named MIDI presets** that save the selected input device together with the footswitch mappings, selectable from a preset list
 - Automatic selection of a device whose name contains “Live Logic”
-- Dark, stage-oriented UI with Live, Playlist, Layers, Audio, MIDI and Session tabs
+- High-contrast, stage-oriented UI with Live, Playlist, Layers, Audio, MIDI and Session views, custom vector icons and visible keyboard-focus states
 - File logging and per-user config paths
 - **Sample-accurate transport clock** with BPM, time signature, bar/beat position, play/pause and stop/rewind
 - **Tap tempo** and BPM controls

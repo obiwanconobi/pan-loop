@@ -6,6 +6,25 @@
 #include <memory>
 #include <vector>
 
+/** Small MIDI activity indicator drawn above its parent groups. */
+class MidiActivityLight final : public juce::Component
+{
+public:
+    void setActive (bool shouldBeActive)
+    {
+        if (active != shouldBeActive)
+        {
+            active = shouldBeActive;
+            repaint();
+        }
+    }
+
+    void paint (juce::Graphics&) override;
+
+private:
+    bool active = false;
+};
+
 /** MIDI device selection, activity monitor and footswitch mapping UI. */
 class MidiPanel final : public juce::Component,
                         private juce::Timer
@@ -40,6 +59,9 @@ private:
 
     MidiManager& midi;
 
+    juce::Label titleLabel;
+    juce::Label subtitleLabel;
+
     juce::GroupComponent deviceGroup { "MIDI input", "MIDI input" };
     juce::GroupComponent mappingGroup { "Footswitch mappings", "Footswitch mappings" };
     juce::GroupComponent logGroup { "MIDI activity", "MIDI activity" };
@@ -47,7 +69,6 @@ private:
     juce::Label deviceLabel;
     juce::Label statusLabel;
     juce::Label lastMessageLabel;
-    juce::Label hintLabel;
     juce::Label mappingHintLabel;
     juce::Label profileLabel;
     juce::Label profileStatusLabel;
@@ -60,10 +81,11 @@ private:
     juce::TextButton deleteProfileButton { "Delete" };
     juce::TextEditor logEditor;
 
+    MidiActivityLight activityLight;
+
     std::vector<std::unique_ptr<MappingRow>> mappingRows;
     juce::Array<juce::MidiDeviceInfo> devices;
     juce::StringArray profileNames;
-    juce::Rectangle<int> activityBounds;
     juce::uint64 lastSeenCount = 0;
     int activityHoldTicks = 0;
     bool updatingControls = false;

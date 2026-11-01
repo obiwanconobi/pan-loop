@@ -27,40 +27,81 @@ void LevelMeter::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
 
-    g.setColour (juce::Colour (0xff0f1115));
-    g.fillRoundedRectangle (bounds, 3.0f);
+    g.setColour (juce::Colour (0xff070a0e));
+    g.fillRoundedRectangle (bounds, 4.0f);
 
-    auto inner = bounds.reduced (1.5f);
+    auto inner = bounds.reduced (2.0f);
     const auto fillAmount = juce::jlimit (0.0f, 1.0f, level);
+    const auto peakAmount = juce::jlimit (0.0f, 1.0f, peak);
 
-    auto filled = vertical
-                    ? inner.removeFromBottom (inner.getHeight() * fillAmount)
-                    : inner.removeFromLeft (inner.getWidth() * fillAmount);
+    const auto longSide = vertical ? inner.getHeight() : inner.getWidth();
+    const auto segments = vertical
+                            ? juce::jlimit (4, 28, static_cast<int> (longSide / 4.0f))
+                            : juce::jlimit (4, 40, static_cast<int> (longSide / 5.0f));
+    const auto gap = 1.5f;
 
-    if (! filled.isEmpty())
+    const auto colourForPosition = [] (float position)
     {
-        juce::ColourGradient gradient (DarkLookAndFeel::playing(), filled.getBottomLeft(),
-                                       DarkLookAndFeel::recording(), filled.getTopRight(), false);
-        g.setGradientFill (gradient);
-        g.fillRoundedRectangle (filled, 2.0f);
-    }
+        if (position > 0.87f)
+            return DarkLookAndFeel::recording();
 
-    if (peak > 0.001f)
+        if (position > 0.70f)
+            return DarkLookAndFeel::armed();
+
+        return DarkLookAndFeel::playing();
+    };
+
+    for (int i = 0; i < segments; ++i)
     {
-        g.setColour (DarkLookAndFeel::text().withAlpha (0.8f));
+        const auto position = static_cast<float> (i + 1) / static_cast<float> (segments);
+        const auto lit = fillAmount >= position;
+
+        juce::Rectangle<float> segment;
 
         if (vertical)
         {
-            const auto y = inner.getBottom() - inner.getHeight() * juce::jlimit (0.0f, 1.0f, peak);
+            const auto segmentHeight = (inner.getHeight() - gap * static_cast<float> (segments - 1))
+                                     / static_cast<float> (segments);
+            segment = { inner.getX(),
+                        inner.getBottom() - (static_cast<float> (i) + 1.0f) * (segmentHeight + gap) + gap,
+                        inner.getWidth(), segmentHeight };
+        }
+        else
+        {
+            const auto segmentWidth = (inner.getWidth() - gap * static_cast<float> (segments - 1))
+                                    / static_cast<float> (segments);
+            segment = { inner.getX() + static_cast<float> (i) * (segmentWidth + gap),
+                        inner.getY(), segmentWidth, inner.getHeight() };
+        }
+
+        if (lit)
+        {
+            g.setColour (colourForPosition (position));
+            g.fillRoundedRectangle (segment, 1.2f);
+        }
+        else
+        {
+            g.setColour (DarkLookAndFeel::outlineSoft().withAlpha (0.55f));
+            g.fillRoundedRectangle (segment, 1.2f);
+        }
+    }
+
+    if (peakAmount > 0.001f)
+    {
+        g.setColour (DarkLookAndFeel::text().withAlpha (0.75f));
+
+        if (vertical)
+        {
+            const auto y = inner.getBottom() - inner.getHeight() * peakAmount;
             g.fillRect (inner.getX(), y, inner.getWidth(), 1.5f);
         }
         else
         {
-            const auto x = inner.getX() + inner.getWidth() * juce::jlimit (0.0f, 1.0f, peak);
+            const auto x = inner.getX() + inner.getWidth() * peakAmount;
             g.fillRect (x, inner.getY(), 1.5f, inner.getHeight());
         }
     }
 
     g.setColour (DarkLookAndFeel::outline());
-    g.drawRoundedRectangle (bounds.reduced (0.5f), 3.0f, 1.0f);
+    g.drawRoundedRectangle (bounds.reduced (0.5f), 4.0f, 1.0f);
 }

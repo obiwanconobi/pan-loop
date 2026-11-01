@@ -78,8 +78,12 @@ private:
     juce::Slider gainSlider;
 
     juce::Rectangle<int> listArea;
+    juce::Rectangle<int> listCardArea;
     juce::Rectangle<int> bottomBarArea;
     juce::Rectangle<int> loadingBarArea;
+    juce::Rectangle<int> emptyIconArea;
+    juce::Rectangle<int> filesPillArea;
+    juce::Rectangle<int> memoryPillArea;
 
     double loadingProgress = 0.0;
     bool loading = false;

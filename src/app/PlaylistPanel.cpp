@@ -27,14 +27,22 @@ PlaylistPanel::PlaylistPanel (AudioEngine& audioEngine)
     if (! lastDirectory.isDirectory())
         lastDirectory = juce::File::getSpecialLocation (juce::File::userHomeDirectory);
 
-    styleLabel (titleLabel, 30.0f, true);
-    styleLabel (subtitleLabel, 13.0f);
+    styleLabel (titleLabel, 28.0f, true);
+    styleLabel (subtitleLabel, 12.5f);
     styleLabel (statusLabel, 12.0f);
-    styleLabel (totalLabel, 13.0f);
-    styleLabel (memoryLabel, 13.0f);
-    styleLabel (selectionLabel, 13.0f, true);
-    styleLabel (gainLabel, 12.0f);
-    styleLabel (emptyLabel, 15.0f);
+    styleLabel (totalLabel, 11.5f, true);
+    styleLabel (memoryLabel, 11.5f, true);
+    styleLabel (selectionLabel, 14.0f, true);
+    styleLabel (gainLabel, 10.5f, true);
+    styleLabel (emptyLabel, 13.5f);
+
+    titleLabel.setFont (DarkLookAndFeel::sans (28.0f, true)
+                            .withExtraKerningFactor (0.02f));
+    subtitleLabel.setFont (DarkLookAndFeel::sans (12.5f));
+    statusLabel.setFont (DarkLookAndFeel::mono (11.5f));
+    totalLabel.setFont (DarkLookAndFeel::mono (11.5f, true));
+    memoryLabel.setFont (DarkLookAndFeel::mono (11.5f, true));
+    gainLabel.setFont (DarkLookAndFeel::kicker (10.5f));
 
     titleLabel.setText ("Backing playlist", juce::dontSendNotification);
     subtitleLabel.setText ("Files play in order and loop as one master cycle",
@@ -45,29 +53,56 @@ PlaylistPanel::PlaylistPanel (AudioEngine& audioEngine)
                          juce::dontSendNotification);
     statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    totalLabel.setText ("Files: 0   |   Cycle: 0:00.000", juce::dontSendNotification);
-    totalLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
-    memoryLabel.setText ("Preloaded audio: 0 KB", juce::dontSendNotification);
+    totalLabel.setText ("0 files   |   Cycle 0:00.000", juce::dontSendNotification);
+    totalLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::text());
+    totalLabel.setJustificationType (juce::Justification::centred);
+    memoryLabel.setText ("0 KB RAM", juce::dontSendNotification);
     memoryLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+    memoryLabel.setJustificationType (juce::Justification::centred);
 
     selectionLabel.setText ("No file selected", juce::dontSendNotification);
     selectionLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::text());
-    gainLabel.setText ("Gain", juce::dontSendNotification);
+    gainLabel.setText ("GAIN", juce::dontSendNotification);
     gainLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
     emptyLabel.setJustificationType (juce::Justification::centred);
     emptyLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
     emptyLabel.setInterceptsMouseClicks (false, false);
-    emptyLabel.setText ("No backing files yet.\nAdd WAV, FLAC or MP3 files to build a loop sequence.",
+    emptyLabel.setText ("No backing tracks yet.\nAdd WAV, FLAC, MP3 or OGG files to build your loop.",
                         juce::dontSendNotification);
 
     addButton.setTooltip ("Add backing audio files");
     addButton.onClick = [this] { chooseFiles(); };
 
+    removeButton.setTooltip ("Remove the selected file");
+    upButton.setTooltip ("Move the selected file earlier");
+    downButton.setTooltip ("Move the selected file later");
+    clearButton.setTooltip ("Remove every file from the playlist");
+
     removeButton.onClick = [this] { removeSelected(); };
     upButton.onClick = [this] { moveSelected (-1); };
     downButton.onClick = [this] { moveSelected (1); };
     clearButton.onClick = [this] { clearPlaylist(); };
+
+    DarkLookAndFeel::setButtonVariant (addButton, "primary");
+    DarkLookAndFeel::setButtonIcon (addButton, "plus");
+    DarkLookAndFeel::setButtonTextSize (addButton, 13.0f);
+
+    DarkLookAndFeel::setButtonVariant (removeButton, "default");
+    DarkLookAndFeel::setButtonIcon (removeButton, "minus");
+    DarkLookAndFeel::setButtonTextSize (removeButton, 12.5f);
+
+    DarkLookAndFeel::setButtonVariant (upButton, "ghost");
+    DarkLookAndFeel::setButtonIcon (upButton, "up");
+    DarkLookAndFeel::setButtonTextSize (upButton, 12.5f);
+
+    DarkLookAndFeel::setButtonVariant (downButton, "ghost");
+    DarkLookAndFeel::setButtonIcon (downButton, "down");
+    DarkLookAndFeel::setButtonTextSize (downButton, 12.5f);
+
+    DarkLookAndFeel::setButtonVariant (clearButton, "dangerSoft");
+    DarkLookAndFeel::setButtonIcon (clearButton, "trash");
+    DarkLookAndFeel::setButtonTextSize (clearButton, 12.5f);
 
     backingMuteButton.setTooltip ("Mute or restore the backing playlist without stopping transport");
     backingMuteButton.setToggleState (engine.isBackingMuted(), juce::dontSendNotification);
@@ -76,10 +111,10 @@ PlaylistPanel::PlaylistPanel (AudioEngine& audioEngine)
         engine.setBackingMuted (backingMuteButton.getToggleState());
     };
 
-    listBox.setRowHeight (34);
-    listBox.setColour (juce::ListBox::backgroundColourId, DarkLookAndFeel::panelAlt());
-    listBox.setColour (juce::ListBox::outlineColourId, DarkLookAndFeel::outline());
-    listBox.setOutlineThickness (1);
+    listBox.setRowHeight (44);
+    listBox.setColour (juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
+    listBox.setColour (juce::ListBox::outlineColourId, juce::Colours::transparentBlack);
+    listBox.setOutlineThickness (0);
 
     gainSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     gainSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 24);
@@ -169,19 +204,37 @@ void PlaylistPanel::paint (juce::Graphics& g)
 {
     g.fillAll (DarkLookAndFeel::background());
 
-    if (! bottomBarArea.isEmpty())
+    if (! filesPillArea.isEmpty())
     {
-        g.setColour (DarkLookAndFeel::panel());
-        g.fillRoundedRectangle (bottomBarArea.toFloat(), 8.0f);
+        DarkLookAndFeel::drawPill (g, filesPillArea,
+                                   DarkLookAndFeel::panelAlt().withAlpha (0.72f),
+                                   DarkLookAndFeel::outline(), 9.0f);
+        DarkLookAndFeel::drawPill (g, memoryPillArea,
+                                   DarkLookAndFeel::panelAlt().withAlpha (0.72f),
+                                   DarkLookAndFeel::outline(), 9.0f);
+    }
+
+    DarkLookAndFeel::drawCard (g, listCardArea,
+                               fileDragActive);
+    DarkLookAndFeel::drawCard (g, bottomBarArea);
+
+    if (snapshot.items.empty() && ! loading && ! emptyIconArea.isEmpty())
+    {
+        g.setColour (DarkLookAndFeel::panelAlt());
+        g.fillEllipse (emptyIconArea.toFloat());
         g.setColour (DarkLookAndFeel::outline());
-        g.drawRoundedRectangle (bottomBarArea.toFloat().reduced (0.5f), 8.0f, 1.0f);
+        g.drawEllipse (emptyIconArea.toFloat().reduced (0.5f), 1.0f);
+
+        g.setColour (DarkLookAndFeel::accent());
+        DarkLookAndFeel::drawIcon (g, "music", emptyIconArea.toFloat().reduced (16.0f),
+                                   DarkLookAndFeel::accent(), 1.8f);
     }
 
     if (loading && ! loadingBarArea.isEmpty())
     {
         auto bar = loadingBarArea.toFloat();
-        g.setColour (DarkLookAndFeel::panelAlt());
-        g.fillRoundedRectangle (bar, 3.0f);
+        g.setColour (DarkLookAndFeel::panelHigh());
+        g.fillRoundedRectangle (bar, 2.0f);
 
         const auto progress = juce::jlimit (0.0, 1.0, loadingProgress);
         const auto filled = bar.withWidth (bar.getWidth() * static_cast<float> (progress));
@@ -189,64 +242,97 @@ void PlaylistPanel::paint (juce::Graphics& g)
         if (filled.getWidth() > 1.0f)
         {
             g.setColour (DarkLookAndFeel::accent());
-            g.fillRoundedRectangle (filled, 3.0f);
+            g.fillRoundedRectangle (filled, 2.0f);
         }
     }
 
-    if (fileDragActive && ! listArea.isEmpty())
+    if (fileDragActive && ! listCardArea.isEmpty())
     {
-        g.setColour (DarkLookAndFeel::accent());
-        g.drawRoundedRectangle (listArea.toFloat().reduced (1.0f), 2.0f, 2.0f);
+        g.setColour (DarkLookAndFeel::accent().withAlpha (0.06f));
+        g.fillRoundedRectangle (listCardArea.toFloat().reduced (1.0f), 13.0f);
+    }
+
+    if (! bottomBarArea.isEmpty())
+    {
+        auto inner = bottomBarArea.reduced (20, 12);
+
+        g.setColour (DarkLookAndFeel::mutedText());
+        g.setFont (DarkLookAndFeel::kicker (10.0f));
+        g.drawText ("SELECTED FILE", inner.getX(), inner.getY(),
+                    280, 14, juce::Justification::centredLeft, false);
+
+        g.setFont (DarkLookAndFeel::sans (11.0f));
+        g.setColour (DarkLookAndFeel::mutedText().withAlpha (0.8f));
+        g.drawText (snapshot.items.empty()
+                        ? "Add files to create a backing cycle."
+                        : "Gain is saved with the session and applies during playback.",
+                    inner.getX(), bottomBarArea.getBottom() - 22,
+                    juce::jmax (260, inner.getWidth() / 2), 16,
+                    juce::Justification::centredLeft, false);
     }
 }
 
 void PlaylistPanel::resized()
 {
-    auto area = getLocalBounds().reduced (28);
+    auto area = getLocalBounds().reduced (24);
 
-    auto header = area.removeFromTop (56);
-    auto titleArea = header.removeFromLeft (juce::jmin (700, header.getWidth() - 40));
-    titleLabel.setBounds (titleArea.removeFromTop (34));
+    auto header = area.removeFromTop (54);
+    auto titleArea = header.removeFromLeft (juce::jmax (320, header.getWidth() - 400));
+    titleLabel.setBounds (titleArea.removeFromTop (32));
     subtitleLabel.setBounds (titleArea);
 
+    memoryPillArea = header.removeFromRight (150).withSizeKeepingCentre (150, 30);
+    header.removeFromRight (10);
+    filesPillArea = header.removeFromRight (200).withSizeKeepingCentre (200, 30);
+    totalLabel.setBounds (filesPillArea.reduced (10, 0));
+    memoryLabel.setBounds (memoryPillArea.reduced (10, 0));
+
+    area.removeFromTop (12);
+
+    auto buttons = area.removeFromTop (38);
+    addButton.setBounds (buttons.removeFromLeft (128));
+    buttons.removeFromLeft (8);
+    removeButton.setBounds (buttons.removeFromLeft (100));
+    buttons.removeFromLeft (8);
+    upButton.setBounds (buttons.removeFromLeft (84));
+    buttons.removeFromLeft (8);
+    downButton.setBounds (buttons.removeFromLeft (92));
+    buttons.removeFromLeft (8);
+    clearButton.setBounds (buttons.removeFromLeft (94));
+    backingMuteButton.setBounds (buttons.removeFromRight (160));
+
+    area.removeFromTop (8);
+    statusLabel.setBounds (area.removeFromTop (20));
     area.removeFromTop (8);
 
-    auto buttons = area.removeFromTop (36);
-    addButton.setBounds (buttons.removeFromLeft (130));
-    buttons.removeFromLeft (8);
-    removeButton.setBounds (buttons.removeFromLeft (90));
-    buttons.removeFromLeft (8);
-    upButton.setBounds (buttons.removeFromLeft (100));
-    buttons.removeFromLeft (8);
-    downButton.setBounds (buttons.removeFromLeft (105));
-    buttons.removeFromLeft (8);
-    clearButton.setBounds (buttons.removeFromLeft (80));
-    buttons.removeFromLeft (20);
-    backingMuteButton.setBounds (buttons.removeFromLeft (150));
-
-    area.removeFromTop (8);
-    statusLabel.setBounds (area.removeFromTop (22));
-    loadingBarArea = area.removeFromTop (5);
-    area.removeFromTop (8);
-
-    bottomBarArea = area.removeFromBottom (78);
+    bottomBarArea = area.removeFromBottom (84);
     area.removeFromBottom (10);
+    listCardArea = area;
 
-    listArea = area;
+    listArea = listCardArea.reduced (8);
     listBox.setBounds (listArea);
-    emptyLabel.setBounds (listArea);
 
-    auto inner = bottomBarArea.reduced (18, 12);
+    loadingBarArea = juce::Rectangle<int> (listCardArea.getX() + 12,
+                                           listCardArea.getY() + 4,
+                                           listCardArea.getWidth() - 24, 3);
+
+    emptyIconArea = juce::Rectangle<int> (56, 56)
+                        .withCentre ({ listCardArea.getCentreX(),
+                                       listCardArea.getCentreY() - 28 });
+    emptyLabel.setBounds (listCardArea.withTrimmedTop (listCardArea.getHeight() / 2 + 8)
+                                      .withTrimmedBottom (20)
+                                      .reduced (30, 0));
+
+    auto inner = bottomBarArea.reduced (20, 12);
+    inner.removeFromTop (16);
+
     auto left = inner.removeFromLeft (inner.getWidth() / 2);
-    totalLabel.setBounds (left.removeFromTop (22));
-    memoryLabel.setBounds (left.removeFromTop (22));
+    selectionLabel.setBounds (left.removeFromTop (24));
 
     auto right = inner;
-    selectionLabel.setBounds (right.removeFromTop (22));
-
     auto gainRow = right.removeFromTop (28);
-    gainLabel.setBounds (gainRow.removeFromLeft (56));
-    gainSlider.setBounds (gainRow.removeFromLeft (240));
+    gainLabel.setBounds (gainRow.removeFromLeft (44));
+    gainSlider.setBounds (gainRow.removeFromLeft (juce::jmin (280, gainRow.getWidth())));
 }
 
 int PlaylistPanel::getNumRows()
@@ -260,32 +346,63 @@ void PlaylistPanel::paintListBoxItem (int rowNumber, juce::Graphics& g,
     if (! juce::isPositiveAndBelow (rowNumber, static_cast<int> (snapshot.items.size())))
         return;
 
-    if (rowIsSelected)
-    {
-        g.setColour (DarkLookAndFeel::accent().withAlpha (0.18f));
-        g.fillRect (0, 0, width, height);
-    }
-
     const auto& item = snapshot.items[static_cast<size_t> (rowNumber)];
 
-    g.setColour (DarkLookAndFeel::mutedText());
-    g.setFont (juce::Font (juce::FontOptions (12.0f)));
+    if (rowIsSelected)
+    {
+        g.setColour (DarkLookAndFeel::accent().withAlpha (0.14f));
+        g.fillRoundedRectangle (juce::Rectangle<float> (6.0f, 2.0f,
+                                                        static_cast<float> (width - 12),
+                                                        static_cast<float> (height - 4)), 8.0f);
+    }
+    else if ((rowNumber % 2) == 1)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.012f));
+        g.fillRect (6, 2, width - 12, height - 4);
+    }
+
+    g.setColour (rowIsSelected ? DarkLookAndFeel::accent()
+                               : DarkLookAndFeel::mutedText());
+    g.setFont (DarkLookAndFeel::mono (10.5f));
     g.drawText (juce::String (rowNumber + 1).paddedLeft ('0', 2),
-                12, 0, 28, height, juce::Justification::centredLeft, false);
+                16, 0, 30, height, juce::Justification::centredLeft, false);
 
-    g.setColour (DarkLookAndFeel::text());
-    g.setFont (juce::Font (juce::FontOptions (14.0f)));
-    g.drawText (item.name, 48, 0, width - 168, height,
-                juce::Justification::centredLeft, true);
+    const auto extension = item.name.fromLastOccurrenceOf (".", false, false).toUpperCase();
+    const auto badge = juce::Rectangle<float> (54.0f,
+                                               (static_cast<float> (height) - 20.0f) * 0.5f,
+                                               30.0f, 20.0f);
+    g.setColour (DarkLookAndFeel::accent().withAlpha (rowIsSelected ? 0.20f : 0.10f));
+    g.fillRoundedRectangle (badge, 5.0f);
+    g.setColour (DarkLookAndFeel::accent().withAlpha (rowIsSelected ? 1.0f : 0.8f));
+    g.setFont (DarkLookAndFeel::mono (8.5f, true));
+    g.drawText (extension.substring (0, 4), badge.toNearestInt(),
+                juce::Justification::centred, false);
+
+    g.setColour (rowIsSelected ? DarkLookAndFeel::text() : DarkLookAndFeel::text().withAlpha (0.86f));
+    g.setFont (DarkLookAndFeel::sans (14.0f, rowIsSelected));
+    g.drawFittedText (item.name, 96, 0, width - 300, height,
+                      juce::Justification::centredLeft, 1, 0.92f);
+
+    if (std::abs (item.gain - 1.0f) > 0.005f)
+    {
+        const auto gainText = juce::String (juce::roundToInt (item.gain * 100.0f)) + "%";
+        auto gainArea = juce::Rectangle<int> (width - 196, 0, 64, height);
+
+        g.setColour (DarkLookAndFeel::armed().withAlpha (0.12f));
+        g.fillRoundedRectangle (gainArea.toFloat().withSizeKeepingCentre (54.0f, 18.0f), 4.0f);
+        g.setColour (DarkLookAndFeel::armed());
+        g.setFont (DarkLookAndFeel::mono (10.0f, true));
+        g.drawText (gainText, gainArea, juce::Justification::centred, false);
+    }
 
     g.setColour (DarkLookAndFeel::mutedText());
-    g.setFont (juce::Font (juce::FontOptions (12.0f)));
+    g.setFont (DarkLookAndFeel::mono (11.5f));
     g.drawText (formatDuration (item.durationSeconds),
-                width - 112, 0, 100, height,
+                width - 118, 0, 100, height,
                 juce::Justification::centredRight, false);
 
-    g.setColour (DarkLookAndFeel::outline().withAlpha (0.5f));
-    g.fillRect (0, height - 1, width, 1);
+    g.setColour (DarkLookAndFeel::outlineSoft().withAlpha (0.6f));
+    g.fillRect (16, height - 1, width - 32, 1);
 }
 
 void PlaylistPanel::selectedRowsChanged (int lastRowSelected)
@@ -571,10 +688,11 @@ void PlaylistPanel::refreshSnapshot()
             listBox.deselectAllRows();
     }
 
-    totalLabel.setText ("Files: " + juce::String (count)
-                            + "   |   Cycle: " + formatDuration (snapshot.totalDurationSeconds),
+    totalLabel.setText (juce::String (count)
+                            + (count == 1 ? " file" : " files")
+                            + "   |   " + formatDuration (snapshot.totalDurationSeconds),
                         juce::dontSendNotification);
-    memoryLabel.setText ("Preloaded audio: " + formatBytes (snapshot.memoryUsageBytes),
+    memoryLabel.setText (formatBytes (snapshot.memoryUsageBytes) + " RAM",
                          juce::dontSendNotification);
 
     emptyLabel.setVisible (snapshot.items.empty() && ! loading);
@@ -615,7 +733,7 @@ void PlaylistPanel::updateSelectionControls()
     }
 
     const auto& item = snapshot.items[static_cast<size_t> (selectedIndex)];
-    selectionLabel.setText ("Selected: " + item.name, juce::dontSendNotification);
+    selectionLabel.setText (item.name, juce::dontSendNotification);
     gainSlider.setEnabled (true);
 
     if (! gainSlider.isMouseButtonDown())

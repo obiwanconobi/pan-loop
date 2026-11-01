@@ -25,12 +25,18 @@ namespace
         {
             setOpaque (true);
 
-            title.setFont (juce::Font (juce::FontOptions (24.0f, juce::Font::bold)));
+            title.setFont (DarkLookAndFeel::sans (28.0f, true)
+                               .withExtraKerningFactor (0.02f));
             title.setColour (juce::Label::textColourId, DarkLookAndFeel::text());
-            title.setText ("Session and diagnostics", juce::dontSendNotification);
+            title.setText ("Session", juce::dontSendNotification);
 
-            info.setFont (juce::Font (juce::FontOptions (13.0f)));
-            info.setColour (juce::Label::textColourId, DarkLookAndFeel::text());
+            subtitle.setFont (DarkLookAndFeel::sans (12.5f));
+            subtitle.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+            subtitle.setText ("Save a performance, load a previous session or export a mixdown",
+                              juce::dontSendNotification);
+
+            info.setFont (DarkLookAndFeel::mono (11.0f));
+            info.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
             info.setJustificationType (juce::Justification::topLeft);
             refreshInfo();
 
@@ -47,6 +53,7 @@ namespace
             copyButton.onClick = [this]
             {
                 juce::SystemClipboard::copyTextToClipboard (buildDiagnostics());
+                setSessionStatus ("Diagnostics copied to the clipboard.", false);
             };
 
             saveSessionButton.onClick = [this] { chooseSaveSession(); };
@@ -54,14 +61,43 @@ namespace
             exportButton.onClick = [this] { chooseExportMixdown(); };
             newSessionButton.onClick = [this] { newSession(); };
 
-            sessionStatusLabel.setFont (juce::Font (juce::FontOptions (12.0f)));
+            sessionStatusLabel.setFont (DarkLookAndFeel::sans (13.5f, true));
             sessionStatusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
             sessionStatusLabel.setJustificationType (juce::Justification::centredLeft);
             sessionStatusLabel.setText ("No session loaded.", juce::dontSendNotification);
 
+            sessionPathLabel.setFont (DarkLookAndFeel::mono (11.0f));
+            sessionPathLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+            sessionPathLabel.setJustificationType (juce::Justification::centredLeft);
+
+            DarkLookAndFeel::setButtonVariant (saveSessionButton, "primary");
+            DarkLookAndFeel::setButtonIcon (saveSessionButton, "save");
+            DarkLookAndFeel::setButtonVariant (loadSessionButton, "default");
+            DarkLookAndFeel::setButtonIcon (loadSessionButton, "load");
+            DarkLookAndFeel::setButtonVariant (exportButton, "default");
+            DarkLookAndFeel::setButtonIcon (exportButton, "export");
+            DarkLookAndFeel::setButtonVariant (newSessionButton, "ghost");
+            DarkLookAndFeel::setButtonIcon (newSessionButton, "new");
+            DarkLookAndFeel::setButtonVariant (openConfigButton, "ghost");
+            DarkLookAndFeel::setButtonIcon (openConfigButton, "folder");
+            DarkLookAndFeel::setButtonVariant (openLogButton, "ghost");
+            DarkLookAndFeel::setButtonIcon (openLogButton, "file");
+            DarkLookAndFeel::setButtonVariant (copyButton, "accent");
+            DarkLookAndFeel::setButtonIcon (copyButton, "copy");
+
+            saveSessionButton.setTooltip ("Save the current session (.panloop)");
+            loadSessionButton.setTooltip ("Load a saved session file");
+            exportButton.setTooltip ("Render one master cycle to a stereo WAV file");
+            newSessionButton.setTooltip ("Clear the playlist, live layers and transport");
+            openConfigButton.setTooltip ("Open the configuration folder");
+            openLogButton.setTooltip ("Open the application log");
+            copyButton.setTooltip ("Copy a diagnostics report to the clipboard");
+
             addAndMakeVisible (title);
+            addAndMakeVisible (subtitle);
             addAndMakeVisible (info);
             addAndMakeVisible (sessionStatusLabel);
+            addAndMakeVisible (sessionPathLabel);
             addAndMakeVisible (saveSessionButton);
             addAndMakeVisible (loadSessionButton);
             addAndMakeVisible (exportButton);
@@ -81,37 +117,78 @@ namespace
         void paint (juce::Graphics& g) override
         {
             g.fillAll (DarkLookAndFeel::background());
+
+            DarkLookAndFeel::drawCard (g, sessionCardArea, true);
+            DarkLookAndFeel::drawCard (g, diagnosticsCardArea);
+
+            const auto drawKicker = [&g] (juce::Rectangle<int> card, const juce::String& text)
+            {
+                if (card.isEmpty())
+                    return;
+
+                g.setColour (DarkLookAndFeel::mutedText());
+                g.setFont (DarkLookAndFeel::kicker (10.5f));
+                g.drawText (text, card.getX() + 20, card.getY() + 14,
+                            card.getWidth() - 40, 16,
+                            juce::Justification::centredLeft, false);
+            };
+
+            drawKicker (sessionCardArea, "SESSION FILE");
+            drawKicker (diagnosticsCardArea, "DIAGNOSTICS");
         }
 
         void resized() override
         {
-            auto area = getLocalBounds().reduced (32);
+            auto area = getLocalBounds().reduced (24);
 
-            title.setBounds (area.removeFromTop (38));
+            auto header = area.removeFromTop (54);
+            auto titleArea = header.removeFromLeft (juce::jmin (700, header.getWidth()));
+            title.setBounds (titleArea.removeFromTop (32));
+            subtitle.setBounds (titleArea);
+
             area.removeFromTop (12);
 
-            auto sessionRow = area.removeFromTop (32);
-            saveSessionButton.setBounds (sessionRow.removeFromLeft (140));
-            sessionRow.removeFromLeft (8);
-            loadSessionButton.setBounds (sessionRow.removeFromLeft (140));
-            sessionRow.removeFromLeft (8);
-            exportButton.setBounds (sessionRow.removeFromLeft (160));
-            sessionRow.removeFromLeft (8);
-            newSessionButton.setBounds (sessionRow.removeFromLeft (120));
-
-            area.removeFromTop (8);
-            sessionStatusLabel.setBounds (area.removeFromTop (24));
+            const auto sessionHeight = juce::jlimit (164, 180,
+                                                     juce::roundToInt (area.getHeight() * 0.32f));
+            sessionCardArea = area.removeFromTop (sessionHeight);
             area.removeFromTop (12);
+            diagnosticsCardArea = area;
 
-            info.setBounds (area.removeFromTop (180));
+            {
+                auto inner = sessionCardArea.reduced (20);
+                inner.removeFromTop (28);
 
-            area.removeFromTop (16);
-            auto row = area.removeFromTop (32);
-            openConfigButton.setBounds (row.removeFromLeft (170));
-            row.removeFromLeft (10);
-            openLogButton.setBounds (row.removeFromLeft (150));
-            row.removeFromLeft (10);
-            copyButton.setBounds (row.removeFromLeft (170));
+                sessionStatusLabel.setBounds (inner.removeFromTop (22));
+                inner.removeFromTop (8);
+
+                auto sessionRow = inner.removeFromTop (42);
+                saveSessionButton.setBounds (sessionRow.removeFromLeft (150));
+                sessionRow.removeFromLeft (10);
+                loadSessionButton.setBounds (sessionRow.removeFromLeft (140));
+                sessionRow.removeFromLeft (10);
+                exportButton.setBounds (sessionRow.removeFromLeft (170));
+                sessionRow.removeFromLeft (10);
+                newSessionButton.setBounds (sessionRow.removeFromLeft (130));
+
+                inner.removeFromTop (6);
+                sessionPathLabel.setBounds (inner.removeFromTop (18));
+            }
+
+            {
+                auto inner = diagnosticsCardArea.reduced (20);
+                copyButton.setBounds (diagnosticsCardArea.getRight() - 170,
+                                      diagnosticsCardArea.getY() + 12, 150, 30);
+
+                inner.removeFromTop (42);
+
+                auto bottomRow = inner.removeFromBottom (34);
+                openConfigButton.setBounds (bottomRow.removeFromLeft (180));
+                bottomRow.removeFromLeft (10);
+                openLogButton.setBounds (bottomRow.removeFromLeft (150));
+
+                inner.removeFromBottom (8);
+                info.setBounds (inner);
+            }
         }
 
     private:
@@ -272,12 +349,30 @@ namespace
             const auto layerInfo = engine.getLiveLooper().getSnapshot();
 
             juce::String text;
+            const auto compact = getHeight() < 560;
+
             text << "Application: Pan Loop " << ProjectInfo::versionString << "\n"
-                 << "Phase: 6 - session persistence, export and packaging\n"
-                 << "Session file: " << (currentSessionFile.existsAsFile()
-                                            ? currentSessionFile.getFullPathName()
-                                            : "(unsaved)") << "\n"
-                 << "Transport: " << transportStateName (infoState.state)
+                 << "Build: " << AppConfig::getBuildInfo() << "\n";
+
+            if (! compact)
+            {
+                if (auto* device = deviceManager.getCurrentAudioDevice())
+                {
+                    text << "Audio: " << device->getName()
+                         << " | " << deviceManager.getCurrentAudioDeviceType() << "\n"
+                         << "Rate: " << juce::String (device->getCurrentSampleRate(), 1) << " Hz"
+                         << " | buffer " << device->getCurrentBufferSizeSamples() << " samples"
+                         << " | " << device->getActiveInputChannels().countNumberOfSetBits()
+                         << " in / " << device->getActiveOutputChannels().countNumberOfSetBits()
+                         << " out | CPU " << juce::String (deviceManager.getCpuUsage() * 100.0, 1) << " %\n";
+                }
+                else
+                {
+                    text << "Audio: no device open\n";
+                }
+            }
+
+            text << "Transport: " << transportStateName (infoState.state)
                  << " | bar " << infoState.bar << "." << infoState.beat
                  << " | " << juce::String (infoState.bpm, 1) << " BPM"
                  << " | " << infoState.beatsPerBar << "/" << infoState.beatUnit << "\n"
@@ -289,12 +384,17 @@ namespace
                  << " | " << (engine.getLiveLooper().isRecording() ? "recording"
                                    : engine.getLiveLooper().isArmed() ? "armed" : "idle") << "\n"
                  << "Metronome: " << (engine.getMetronome().isEnabled() ? "on" : "off")
-                 << " | level " << juce::String (engine.getMetronome().getLevel() * 100.0f, 0) << " %\n"
-                 << "Config directory: " << AppConfig::getConfigDirectory().getFullPathName() << "\n"
-                 << "Log file: " << AppConfig::getLogFile().getFullPathName() << "\n"
-                 << "Build: " << AppConfig::getBuildInfo();
+                 << " | level " << juce::String (engine.getMetronome().getLevel() * 100.0f, 0) << " %";
+
+            if (! compact)
+                text << "\nRound-trip latency: " << juce::String (engine.getRoundTripLatencyMs(), 1) << " ms";
 
             info.setText (text, juce::dontSendNotification);
+
+            sessionPathLabel.setText (currentSessionFile.existsAsFile()
+                                        ? "FILE  " + currentSessionFile.getFullPathName()
+                                        : "No session file saved yet.",
+                                      juce::dontSendNotification);
         }
 
         juce::String buildDiagnostics() const
@@ -375,8 +475,10 @@ namespace
         AudioEngine& engine;
 
         juce::Label title;
+        juce::Label subtitle;
         juce::Label info;
         juce::Label sessionStatusLabel;
+        juce::Label sessionPathLabel;
         juce::TextButton saveSessionButton { "Save Session..." };
         juce::TextButton loadSessionButton { "Load Session..." };
         juce::TextButton exportButton { "Export Mixdown..." };
@@ -384,6 +486,9 @@ namespace
         juce::TextButton openConfigButton { "Open config folder" };
         juce::TextButton openLogButton { "Open log file" };
         juce::TextButton copyButton { "Copy diagnostics" };
+
+        juce::Rectangle<int> sessionCardArea;
+        juce::Rectangle<int> diagnosticsCardArea;
 
         juce::File currentSessionFile;
         std::unique_ptr<juce::FileChooser> fileChooser;
@@ -395,27 +500,28 @@ MainComponent::MainComponent()
     setOpaque (true);
 
     titleLabel.setText ("PAN LOOP", juce::dontSendNotification);
-    titleLabel.setFont (juce::Font (juce::FontOptions (30.0f, juce::Font::bold)));
+    titleLabel.setFont (DarkLookAndFeel::sans (28.0f, true)
+                            .withExtraKerningFactor (0.08f));
     titleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::text());
 
-    subtitleLabel.setText ("Linux live looping  |  JACK audio  |  MIDI foot control",
+    subtitleLabel.setText ("LIVE LOOP STATION  |  JACK AUDIO  |  MIDI FOOT CONTROL",
                            juce::dontSendNotification);
-    subtitleLabel.setFont (juce::Font (juce::FontOptions (13.0f)));
+    subtitleLabel.setFont (DarkLookAndFeel::mono (10.5f).withExtraKerningFactor (0.12f));
     subtitleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    phaseLabel.setText ("PHASE 6  |  SESSION & PACKAGING", juce::dontSendNotification);
-    phaseLabel.setFont (juce::Font (juce::FontOptions (13.0f, juce::Font::bold)));
-    phaseLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::accent());
-    phaseLabel.setJustificationType (juce::Justification::centredRight);
+    audioStatusLabel.setFont (DarkLookAndFeel::mono (11.5f, true));
+    audioStatusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+    audioStatusLabel.setJustificationType (juce::Justification::centredLeft);
 
-    performanceButton.setTooltip ("Open the large stage view (F11)");
-    performanceButton.setColour (juce::TextButton::buttonColourId, DarkLookAndFeel::accent().withAlpha (0.2f));
-    performanceButton.setColour (juce::TextButton::textColourOffId, DarkLookAndFeel::text());
+    performanceButton.setTooltip ("Open the stage view (F11)");
+    DarkLookAndFeel::setButtonVariant (performanceButton, "accent");
+    DarkLookAndFeel::setButtonIcon (performanceButton, "expand");
+    DarkLookAndFeel::setButtonTextSize (performanceButton, 13.0f);
     performanceButton.onClick = [this] { setPerformanceMode (! performanceMode); };
 
     addAndMakeVisible (titleLabel);
     addAndMakeVisible (subtitleLabel);
-    addAndMakeVisible (phaseLabel);
+    addAndMakeVisible (audioStatusLabel);
     addAndMakeVisible (performanceButton);
 
     const auto audioError = AudioSetup::initialise (deviceManager);
@@ -437,16 +543,39 @@ MainComponent::MainComponent()
         midiManager->selectDeviceMatching (testMidiDevice);
    #endif
 
-    tabs.setTabBarDepth (40);
+    const char* tabLabels[numTabs] = { "Live", "Playlist", "Layers", "Audio", "MIDI", "Session" };
+    const char* tabIcons[numTabs] = { "live", "playlist", "layers", "audio", "midi", "session" };
+
+    for (int i = 0; i < numTabs; ++i)
+    {
+        auto& button = navButtons[i];
+        button.setButtonText (tabLabels[i]);
+        button.setClickingTogglesState (true);
+        button.setRadioGroupId (0x504c4e);
+        DarkLookAndFeel::setButtonVariant (button, "nav");
+        DarkLookAndFeel::setButtonIcon (button, tabIcons[i]);
+        DarkLookAndFeel::setButtonTextSize (button, 13.0f);
+        button.setTooltip ("Open the " + juce::String (tabLabels[i]) + " view");
+        button.onClick = [this, i]
+        {
+            tabs.setCurrentTabIndex (i);
+            updateNavState();
+        };
+
+        addAndMakeVisible (button);
+    }
+
+    tabs.setTabBarDepth (0);
+    tabs.setIndent (0);
     tabs.setColour (juce::TabbedComponent::backgroundColourId, DarkLookAndFeel::background());
-    tabs.addTab ("Live", DarkLookAndFeel::panel(), new LivePanel (audioEngine), true);
+    tabs.addTab ("Live", DarkLookAndFeel::background(), new LivePanel (audioEngine), true);
     playlistPanel = new PlaylistPanel (audioEngine);
-    tabs.addTab ("Playlist", DarkLookAndFeel::panel(), playlistPanel, true);
-    tabs.addTab ("Layers", DarkLookAndFeel::panel(), new LayersPanel (audioEngine), true);
-    tabs.addTab ("Audio", DarkLookAndFeel::panel(),
+    tabs.addTab ("Playlist", DarkLookAndFeel::background(), playlistPanel, true);
+    tabs.addTab ("Layers", DarkLookAndFeel::background(), new LayersPanel (audioEngine), true);
+    tabs.addTab ("Audio", DarkLookAndFeel::background(),
                  new AudioSettingsPanel (deviceManager, audioEngine), true);
-    tabs.addTab ("MIDI", DarkLookAndFeel::panel(), new MidiPanel (*midiManager), true);
-    tabs.addTab ("Session", DarkLookAndFeel::panel(),
+    tabs.addTab ("MIDI", DarkLookAndFeel::background(), new MidiPanel (*midiManager), true);
+    tabs.addTab ("Session", DarkLookAndFeel::background(),
                  new SessionInfoPanel (deviceManager, *midiManager, audioEngine), true);
     tabs.setCurrentTabIndex (0);
 
@@ -459,7 +588,10 @@ MainComponent::MainComponent()
     addChildComponent (*performancePanel);
 
     setWantsKeyboardFocus (true);
-    setSize (1180, 820);
+    updateNavState();
+    updateAudioStatus();
+    startTimerHz (2);
+    setSize (1220, 880);
 
    #if JUCE_DEBUG
     const auto screenshotPath = juce::SystemStats::getEnvironmentVariable ("PANLOOP_SCREENSHOT", {});
@@ -481,7 +613,10 @@ MainComponent::MainComponent()
         }
 
         if (tabIndex >= 0 && tabIndex < tabs.getNumTabs())
+        {
             tabs.setCurrentTabIndex (tabIndex);
+            updateNavState();
+        }
 
         const auto delayText = juce::SystemStats::getEnvironmentVariable ("PANLOOP_SCREENSHOT_DELAY_MS", "3000");
         const auto screenshotDelay = juce::jlimit (100, 60000, delayText.getIntValue());
@@ -665,8 +800,53 @@ MainComponent::MainComponent()
 
 MainComponent::~MainComponent()
 {
+    stopTimer();
     deviceManager.removeAudioCallback (&audioEngine);
     midiManager.reset();
+}
+
+void MainComponent::timerCallback()
+{
+    updateAudioStatus();
+    updateNavState();
+}
+
+void MainComponent::updateNavState()
+{
+    const auto current = tabs.getCurrentTabIndex();
+
+    for (int i = 0; i < numTabs; ++i)
+        if (navButtons[i].getToggleState() != (i == current))
+            navButtons[i].setToggleState (i == current, juce::dontSendNotification);
+}
+
+void MainComponent::updateAudioStatus()
+{
+    if (auto* device = deviceManager.getCurrentAudioDevice())
+    {
+        const auto type = deviceManager.getCurrentAudioDeviceType();
+        const auto rate = device->getCurrentSampleRate();
+        const auto rateText = rate >= 1000.0
+                                ? juce::String (rate / 1000.0, rate >= 10000.0 ? 0 : 1) + " kHz"
+                                : juce::String (rate, 0) + " Hz";
+
+        audioStatusLabel.setText ((type.isNotEmpty() ? type.toUpperCase() : "AUDIO")
+                                      + "  |  " + rateText,
+                                  juce::dontSendNotification);
+        audioStatusLabel.setColour (juce::Label::textColourId,
+                                    type.equalsIgnoreCase ("JACK")
+                                        ? DarkLookAndFeel::playing()
+                                        : DarkLookAndFeel::armed());
+        audioStatusLabel.setTooltip (device->getName());
+    }
+    else
+    {
+        audioStatusLabel.setText ("NO AUDIO DEVICE", juce::dontSendNotification);
+        audioStatusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::recording());
+        audioStatusLabel.setTooltip ("Start JACK or choose another backend in the Audio tab");
+    }
+
+    repaint (audioStatusPillArea);
 }
 
 void MainComponent::handleMidiAction (MidiAction action)
@@ -721,8 +901,11 @@ void MainComponent::setPerformanceMode (bool shouldBeEnabled)
     performancePanel->setVisible (performanceMode);
     titleLabel.setVisible (! performanceMode);
     subtitleLabel.setVisible (! performanceMode);
-    phaseLabel.setVisible (! performanceMode);
+    audioStatusLabel.setVisible (! performanceMode);
     performanceButton.setVisible (! performanceMode);
+
+    for (auto& button : navButtons)
+        button.setVisible (! performanceMode);
 
     resized();
 
@@ -764,16 +947,72 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
 
 void MainComponent::paint (juce::Graphics& g)
 {
-    g.fillAll (DarkLookAndFeel::background());
+    juce::ColourGradient backgroundGradient (DarkLookAndFeel::panel().darker (0.35f),
+                                             0.0f, 0.0f,
+                                             DarkLookAndFeel::background(),
+                                             0.0f, static_cast<float> (getHeight()),
+                                             false);
+    g.setGradientFill (backgroundGradient);
+    g.fillAll();
 
     if (performanceMode)
         return;
 
-    g.setColour (DarkLookAndFeel::outline());
-    g.fillRect (0, 78, getWidth(), 1);
+    g.setGradientFill (juce::ColourGradient (DarkLookAndFeel::accent().withAlpha (0.07f),
+                                             0.0f, 0.0f,
+                                             juce::Colours::transparentBlack,
+                                             380.0f, 0.0f, true));
+    g.fillRect (0, 0, 380, 84);
 
-    g.setColour (DarkLookAndFeel::accent());
-    g.fillRect (24, 24, 4, 28);
+    auto brandMark = juce::Rectangle<float> (22.0f, 22.0f, 40.0f, 40.0f);
+    g.setColour (DarkLookAndFeel::panelHigh());
+    g.fillRoundedRectangle (brandMark, 11.0f);
+    g.setColour (DarkLookAndFeel::outline());
+    g.drawRoundedRectangle (brandMark.reduced (0.5f), 11.0f, 1.0f);
+    DarkLookAndFeel::drawIcon (g, "loop", brandMark.reduced (9.0f),
+                               DarkLookAndFeel::accent(), 2.2f);
+
+    g.setGradientFill (juce::ColourGradient (DarkLookAndFeel::accent().withAlpha (0.55f),
+                                             0.0f, 83.0f,
+                                             DarkLookAndFeel::outlineSoft().withAlpha (0.45f),
+                                             static_cast<float> (getWidth()), 83.0f,
+                                             false));
+    g.fillRect (0, 83, getWidth(), 1);
+
+    if (! navDockArea.isEmpty())
+    {
+        DarkLookAndFeel::drawPill (g, navDockArea,
+                                   DarkLookAndFeel::panel().withAlpha (0.64f),
+                                   DarkLookAndFeel::outlineSoft(), 12.0f);
+
+        auto hint = navDockArea.reduced (16, 0).removeFromRight (170);
+        g.setColour (DarkLookAndFeel::mutedText().withAlpha (0.72f));
+        g.setFont (DarkLookAndFeel::kicker (9.5f));
+        g.drawText ("F11  |  STAGE VIEW", hint,
+                    juce::Justification::centredRight, false);
+    }
+
+    if (! audioStatusPillArea.isEmpty())
+    {
+        auto* device = deviceManager.getCurrentAudioDevice();
+        const auto type = deviceManager.getCurrentAudioDeviceType();
+        const auto statusColour = device == nullptr
+                                    ? DarkLookAndFeel::recording()
+                                    : type.equalsIgnoreCase ("JACK")
+                                        ? DarkLookAndFeel::playing()
+                                        : DarkLookAndFeel::armed();
+
+        DarkLookAndFeel::drawPill (g, audioStatusPillArea,
+                                   DarkLookAndFeel::panelAlt().withAlpha (0.72f),
+                                   DarkLookAndFeel::outline(), 9.0f);
+
+        const auto centre = juce::Point<float> (static_cast<float> (audioStatusPillArea.getX() + 14),
+                                                static_cast<float> (audioStatusPillArea.getCentreY()));
+        g.setColour (statusColour.withAlpha (0.18f));
+        g.fillEllipse (juce::Rectangle<float> (12.0f, 12.0f).withCentre (centre));
+        g.setColour (statusColour);
+        g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre (centre));
+    }
 }
 
 void MainComponent::resized()
@@ -791,13 +1030,31 @@ void MainComponent::resized()
     if (performancePanel != nullptr)
         performancePanel->setBounds (area);
 
-    auto header = area.removeFromTop (79).reduced (24, 12);
-    auto titleArea = header.removeFromLeft (juce::jmin (500, juce::jmax (320, header.getWidth() - 570)));
-    titleLabel.setBounds (titleArea.removeFromTop (34));
-    subtitleLabel.setBounds (titleArea);
-    performanceButton.setBounds (header.removeFromRight (150));
-    header.removeFromRight (8);
-    phaseLabel.setBounds (header.removeFromRight (400));
+    auto header = area.removeFromTop (84);
+    auto headerInner = header.reduced (22, 12);
 
-    tabs.setBounds (area.reduced (16, 14));
+    performanceButton.setBounds (headerInner.removeFromRight (164)
+                                       .withSizeKeepingCentre (164, 38));
+    headerInner.removeFromRight (12);
+
+    audioStatusPillArea = headerInner.removeFromRight (224)
+                                       .withSizeKeepingCentre (224, 32);
+    audioStatusLabel.setBounds (audioStatusPillArea.withTrimmedLeft (26)
+                                                    .withTrimmedRight (12));
+    headerInner.removeFromRight (12);
+    headerInner.removeFromLeft (52);
+
+    titleLabel.setBounds (headerInner.removeFromTop (34));
+    subtitleLabel.setBounds (headerInner);
+
+    navDockArea = area.removeFromTop (58).reduced (16, 6);
+    auto navArea = navDockArea.reduced (6, 2);
+
+    for (auto& button : navButtons)
+    {
+        button.setBounds (navArea.removeFromLeft (118));
+        navArea.removeFromLeft (4);
+    }
+
+    tabs.setBounds (area.reduced (16, 10));
 }

@@ -22,9 +22,13 @@ namespace
 
     void styleLabel (juce::Label& label, float height = 14.0f, bool bold = false)
     {
-        label.setFont (juce::Font (juce::FontOptions (height,
-                                                      bold ? juce::Font::bold : juce::Font::plain)));
-        label.setColour (juce::Label::textColourId, DarkLookAndFeel::text());
+        DarkLookAndFeel::styleLabel (label, height, bold);
+    }
+
+    void styleFieldLabel (juce::Label& label)
+    {
+        label.setFont (DarkLookAndFeel::kicker (10.5f));
+        label.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
         label.setJustificationType (juce::Justification::centredLeft);
     }
 
@@ -33,6 +37,7 @@ namespace
         group.setColour (juce::GroupComponent::outlineColourId, DarkLookAndFeel::outline());
         group.setColour (juce::GroupComponent::textColourId, DarkLookAndFeel::mutedText());
         group.setTextLabelPosition (juce::Justification::centredLeft);
+        group.setOpaque (false);
     }
 }
 
@@ -43,33 +48,55 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
     styleGroup (deviceGroup);
     styleGroup (mixGroup);
 
-    styleLabel (backendLabel, 14.0f);
-    styleLabel (inputLabel, 14.0f);
-    styleLabel (outputLabel, 14.0f);
-    styleLabel (sampleRateLabel, 14.0f);
-    styleLabel (sampleRateHintLabel, 12.0f);
-    styleLabel (bufferSizeLabel, 14.0f);
-    styleLabel (bufferSizeHintLabel, 12.0f);
-    styleLabel (jackStatusLabel, 14.0f, true);
-    styleLabel (statusLabel, 13.0f, true);
+    styleLabel (titleLabel, 28.0f, true);
+    styleLabel (subtitleLabel, 12.5f);
+    titleLabel.setFont (DarkLookAndFeel::sans (28.0f, true)
+                            .withExtraKerningFactor (0.02f));
+    titleLabel.setText ("Audio", juce::dontSendNotification);
+    subtitleLabel.setFont (DarkLookAndFeel::sans (12.5f));
+    subtitleLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+    subtitleLabel.setText ("Device, sample rate, latency and monitoring", juce::dontSendNotification);
 
-    backendLabel.setText ("Backend", juce::dontSendNotification);
-    inputLabel.setText ("Input device", juce::dontSendNotification);
-    outputLabel.setText ("Output device", juce::dontSendNotification);
-    sampleRateLabel.setText ("Sample rate", juce::dontSendNotification);
+    styleFieldLabel (backendLabel);
+    styleFieldLabel (inputLabel);
+    styleFieldLabel (outputLabel);
+    styleFieldLabel (sampleRateLabel);
+    styleFieldLabel (bufferSizeLabel);
+    styleFieldLabel (inputGainLabel);
+    styleFieldLabel (outputGainLabel);
+    styleFieldLabel (latencyOffsetLabel);
+
+    styleLabel (sampleRateHintLabel, 10.5f);
+    styleLabel (bufferSizeHintLabel, 10.5f);
+    sampleRateHintLabel.setFont (DarkLookAndFeel::mono (10.0f));
+    bufferSizeHintLabel.setFont (DarkLookAndFeel::mono (10.0f));
+    styleLabel (jackStatusLabel, 12.0f, true);
+    styleLabel (statusLabel, 11.5f);
+    statusLabel.setFont (DarkLookAndFeel::mono (11.0f));
+
+    backendLabel.setText ("BACKEND", juce::dontSendNotification);
+    inputLabel.setText ("INPUT DEVICE", juce::dontSendNotification);
+    outputLabel.setText ("OUTPUT DEVICE", juce::dontSendNotification);
+    sampleRateLabel.setText ("SAMPLE RATE", juce::dontSendNotification);
     sampleRateHintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
     sampleRateHintLabel.setJustificationType (juce::Justification::centredLeft);
+    sampleRateHintLabel.setTooltip ("JACK owns its sample rate; choose it in the server or PipeWire settings.");
 
-    bufferSizeLabel.setText ("Buffer size", juce::dontSendNotification);
+    bufferSizeLabel.setText ("BUFFER SIZE", juce::dontSendNotification);
     bufferSizeHintLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
     bufferSizeHintLabel.setJustificationType (juce::Justification::centredLeft);
+    bufferSizeHintLabel.setTooltip ("The buffer size is the number of samples in one audio callback period.");
 
     statusLabel.setJustificationType (juce::Justification::topLeft);
+    statusLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    errorLabel.setFont (juce::Font (juce::FontOptions (12.0f)));
+    errorLabel.setFont (DarkLookAndFeel::mono (11.0f));
     errorLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::recording());
     errorLabel.setJustificationType (juce::Justification::centredLeft);
+    errorLabel.setBorderSize (juce::BorderSize<int> (0, 10, 0, 10));
 
+    addAndMakeVisible (titleLabel);
+    addAndMakeVisible (subtitleLabel);
     addAndMakeVisible (deviceGroup);
     addAndMakeVisible (mixGroup);
     addAndMakeVisible (backendLabel);
@@ -102,18 +129,22 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
 
     addAndMakeVisible (inputMeter);
     addAndMakeVisible (outputMeter);
+    inputMeter.setOrientation (true);
+    outputMeter.setOrientation (true);
 
-    styleLabel (inputGainLabel, 13.0f);
-    styleLabel (outputGainLabel, 13.0f);
-    styleLabel (latencyOffsetLabel, 13.0f);
-    styleLabel (inputMeterLabel, 12.0f);
-    styleLabel (outputMeterLabel, 12.0f);
+    styleFieldLabel (inputGainLabel);
+    styleFieldLabel (outputGainLabel);
+    styleFieldLabel (latencyOffsetLabel);
+    inputMeterLabel.setFont (DarkLookAndFeel::kicker (10.0f));
+    outputMeterLabel.setFont (DarkLookAndFeel::kicker (10.0f));
+    inputMeterLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
+    outputMeterLabel.setColour (juce::Label::textColourId, DarkLookAndFeel::mutedText());
 
-    inputGainLabel.setText ("Input gain", juce::dontSendNotification);
-    outputGainLabel.setText ("Output gain", juce::dontSendNotification);
-    latencyOffsetLabel.setText ("Record offset", juce::dontSendNotification);
-    inputMeterLabel.setText ("IN", juce::dontSendNotification);
-    outputMeterLabel.setText ("OUT", juce::dontSendNotification);
+    inputGainLabel.setText ("INPUT GAIN", juce::dontSendNotification);
+    outputGainLabel.setText ("OUTPUT GAIN", juce::dontSendNotification);
+    latencyOffsetLabel.setText ("RECORD OFFSET", juce::dontSendNotification);
+    inputMeterLabel.setText ("INPUT", juce::dontSendNotification);
+    outputMeterLabel.setText ("OUTPUT", juce::dontSendNotification);
 
     for (auto* slider : { &inputGainSlider, &outputGainSlider })
     {
@@ -182,6 +213,10 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
     };
 
     applyButton.onClick = [this] { applyDeviceSelection(); };
+    DarkLookAndFeel::setButtonVariant (applyButton, "primary");
+    DarkLookAndFeel::setButtonIcon (applyButton, "check");
+    DarkLookAndFeel::setButtonTextSize (applyButton, 12.5f);
+    applyButton.setTooltip ("Apply the selected device, sample rate and buffer size");
 
     rescanButton.onClick = [this]
     {
@@ -190,6 +225,10 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
         rebuildBufferSizeList();
         updateStatus();
     };
+    DarkLookAndFeel::setButtonVariant (rescanButton, "ghost");
+    DarkLookAndFeel::setButtonIcon (rescanButton, "loop");
+    DarkLookAndFeel::setButtonTextSize (rescanButton, 12.5f);
+    rescanButton.setTooltip ("Scan again for audio devices");
 
     monitorButton.onClick = [this]
     {
@@ -248,97 +287,145 @@ AudioSettingsPanel::AudioSettingsPanel (juce::AudioDeviceManager& manager,
 
 void AudioSettingsPanel::resized()
 {
-    auto area = getLocalBounds().reduced (18);
+    auto area = getLocalBounds().reduced (20);
 
-    deviceGroup.setBounds (area.removeFromTop (334));
-    area.removeFromTop (14);
-    mixGroup.setBounds (area.removeFromTop (250));
+    auto header = area.removeFromTop (44);
+    auto titleArea = header.removeFromLeft (juce::jmin (700, header.getWidth()));
+    titleLabel.setBounds (titleArea.removeFromTop (30));
+    subtitleLabel.setBounds (titleArea);
+
     area.removeFromTop (10);
-    errorLabel.setBounds (area.removeFromTop (30));
+
+    auto errorArea = area.removeFromBottom (24);
+    errorLabel.setBounds (errorArea);
+    area.removeFromBottom (8);
+
+    const auto available = area.getHeight();
+    const auto deviceHeight = juce::jlimit (206, 260,
+                                            juce::roundToInt (static_cast<float> (available) * 0.50f));
+    const auto mixHeight = juce::jmax (0, available - deviceHeight - 10);
+
+    deviceGroup.setBounds (area.removeFromTop (deviceHeight));
+    area.removeFromTop (10);
+    mixGroup.setBounds (area.removeFromTop (mixHeight));
 
     {
-        auto inner = deviceGroup.getLocalBounds().reduced (14);
+        auto inner = deviceGroup.getLocalBounds().reduced (16, 14);
         inner.translate (deviceGroup.getX(), deviceGroup.getY());
         inner.removeFromTop (10);
 
-        auto row = inner.removeFromTop (30);
-        backendLabel.setBounds (row.removeFromLeft (95));
-        backendBox.setBounds (row.removeFromLeft (220));
-        row.removeFromLeft (10);
-        rescanButton.setBounds (row.removeFromLeft (100));
+        constexpr int rowsHeight = 110;
+        constexpr int statusHeight = 50;
+        const auto topPad = juce::jmax (0, (inner.getHeight() - rowsHeight - statusHeight - 8) / 2);
+        inner.removeFromTop (topPad);
 
-        inner.removeFromTop (10);
-        row = inner.removeFromTop (30);
-        inputLabel.setBounds (row.removeFromLeft (95));
-        inputBox.setBounds (row.removeFromLeft (320));
+        auto columns = inner.removeFromTop (rowsHeight);
+        auto left = columns.removeFromLeft (columns.getWidth() / 2 - 10);
+        columns.removeFromLeft (20);
+        auto right = columns;
 
-        inner.removeFromTop (10);
-        row = inner.removeFromTop (30);
-        outputLabel.setBounds (row.removeFromLeft (95));
-        outputBox.setBounds (row.removeFromLeft (320));
+        auto row = left.removeFromTop (30);
+        backendLabel.setBounds (row.removeFromLeft (80));
+        rescanButton.setBounds (row.removeFromRight (96));
+        row.removeFromRight (8);
+        backendBox.setBounds (row);
 
-        inner.removeFromTop (10);
-        row = inner.removeFromTop (30);
-        sampleRateLabel.setBounds (row.removeFromLeft (95));
-        sampleRateBox.setBounds (row.removeFromLeft (170));
-        row.removeFromLeft (10);
-        sampleRateHintLabel.setBounds (row.removeFromLeft (420));
+        left.removeFromTop (10);
+        row = left.removeFromTop (30);
+        inputLabel.setBounds (row.removeFromLeft (80));
+        row.removeFromLeft (8);
+        inputBox.setBounds (row);
 
-        inner.removeFromTop (10);
-        row = inner.removeFromTop (30);
-        bufferSizeLabel.setBounds (row.removeFromLeft (95));
-        bufferSizeBox.setBounds (row.removeFromLeft (170));
-        row.removeFromLeft (10);
-        bufferSizeHintLabel.setBounds (row.removeFromLeft (420));
+        left.removeFromTop (10);
+        row = left.removeFromTop (30);
+        outputLabel.setBounds (row.removeFromLeft (80));
+        row.removeFromLeft (8);
+        outputBox.setBounds (row);
 
-        inner.removeFromTop (10);
-        row = inner.removeFromTop (30);
-        jackStatusLabel.setBounds (row.removeFromLeft (320));
-        row.removeFromRight (10);
+        row = right.removeFromTop (30);
+        sampleRateLabel.setBounds (row.removeFromLeft (84));
+        sampleRateBox.setBounds (row.removeFromLeft (juce::jmin (150, row.getWidth())));
+        row.removeFromLeft (8);
+        sampleRateHintLabel.setBounds (row);
+
+        right.removeFromTop (10);
+        row = right.removeFromTop (30);
+        bufferSizeLabel.setBounds (row.removeFromLeft (84));
+        bufferSizeBox.setBounds (row.removeFromLeft (juce::jmin (150, row.getWidth())));
+        row.removeFromLeft (8);
+        bufferSizeHintLabel.setBounds (row);
+
+        right.removeFromTop (10);
+        row = right.removeFromTop (30);
         applyButton.setBounds (row.removeFromRight (110));
+        row.removeFromRight (8);
+        jackStatusLabel.setBounds (row);
 
         inner.removeFromTop (8);
-        statusLabel.setBounds (inner.removeFromTop (46));
+        statusLabel.setBounds (inner.removeFromTop (statusHeight));
     }
 
     {
-        auto inner = mixGroup.getLocalBounds().reduced (14);
+        auto inner = mixGroup.getLocalBounds().reduced (16, 14);
         inner.translate (mixGroup.getX(), mixGroup.getY());
         inner.removeFromTop (10);
 
-        auto meters = inner.removeFromRight (280).reduced (8, 0);
+        auto meters = inner.removeFromRight (juce::jmin (190, inner.getWidth() / 3));
+        inner.removeFromRight (24);
+
         auto controls = inner;
+        constexpr int controlsHeight = 146;
+        controls.removeFromTop (juce::jmax (0, (controls.getHeight() - controlsHeight) / 2));
 
         auto row = controls.removeFromTop (30);
-        monitorButton.setBounds (row.removeFromLeft (190));
-        testToneButton.setBounds (row.removeFromLeft (200));
+        monitorButton.setBounds (row.removeFromLeft (juce::jmin (190, row.getWidth() / 2)));
+        testToneButton.setBounds (row.removeFromLeft (juce::jmin (200, row.getWidth())));
 
-        controls.removeFromTop (12);
-        row = controls.removeFromTop (32);
-        inputGainLabel.setBounds (row.removeFromLeft (90));
+        controls.removeFromTop (10);
+        row = controls.removeFromTop (30);
+        inputGainLabel.setBounds (row.removeFromLeft (96));
         inputGainSlider.setBounds (row.removeFromLeft (juce::jmin (360, row.getWidth())));
 
         controls.removeFromTop (8);
-        row = controls.removeFromTop (32);
-        outputGainLabel.setBounds (row.removeFromLeft (90));
+        row = controls.removeFromTop (30);
+        outputGainLabel.setBounds (row.removeFromLeft (96));
         outputGainSlider.setBounds (row.removeFromLeft (juce::jmin (360, row.getWidth())));
 
         controls.removeFromTop (8);
-        row = controls.removeFromTop (32);
-        latencyOffsetLabel.setBounds (row.removeFromLeft (90));
+        row = controls.removeFromTop (30);
+        latencyOffsetLabel.setBounds (row.removeFromLeft (96));
         latencyOffsetSlider.setBounds (row.removeFromLeft (juce::jmin (360, row.getWidth())));
 
-        inputMeterLabel.setBounds (meters.removeFromTop (20));
-        inputMeter.setBounds (meters.removeFromTop (24));
-        meters.removeFromTop (10);
-        outputMeterLabel.setBounds (meters.removeFromTop (20));
-        outputMeter.setBounds (meters.removeFromTop (24));
+        const auto meterBlockHeight = juce::jmin (250, meters.getHeight());
+        auto meterBlock = meters.withSizeKeepingCentre (meters.getWidth(), meterBlockHeight);
+        auto labelsRow = meterBlock.removeFromTop (18);
+        meterBlock.removeFromTop (6);
+
+        constexpr int barWidth = 44;
+        constexpr int barGap = 20;
+        const auto barsWidth = barWidth * 2 + barGap;
+        const auto barsX = meterBlock.getX() + (meterBlock.getWidth() - barsWidth) / 2;
+
+        inputMeterLabel.setBounds (barsX, labelsRow.getY(), barWidth, 18);
+        outputMeterLabel.setBounds (barsX + barWidth + barGap, labelsRow.getY(), barWidth, 18);
+        inputMeter.setBounds (barsX, meterBlock.getY(), barWidth, meterBlock.getHeight());
+        outputMeter.setBounds (barsX + barWidth + barGap, meterBlock.getY(),
+                               barWidth, meterBlock.getHeight());
     }
 }
 
 void AudioSettingsPanel::paint (juce::Graphics& g)
 {
     g.fillAll (DarkLookAndFeel::background());
+
+    if (errorLabel.getText().isNotEmpty())
+    {
+        auto alert = errorLabel.getBounds().toFloat().expanded (4.0f, 2.0f);
+        g.setColour (DarkLookAndFeel::recording().withAlpha (0.10f));
+        g.fillRoundedRectangle (alert, 7.0f);
+        g.setColour (DarkLookAndFeel::recording().withAlpha (0.30f));
+        g.drawRoundedRectangle (alert.reduced (0.5f), 7.0f, 1.0f);
+    }
 }
 
 void AudioSettingsPanel::refreshFromManager()
@@ -514,13 +601,13 @@ void AudioSettingsPanel::rebuildSampleRateList()
     sampleRateBox.setEnabled (! isJack && ! sampleRates.empty());
 
     if (isJack)
-        sampleRateHintLabel.setText ("JACK server rate - change it in JACK/PipeWire",
+        sampleRateHintLabel.setText ("JACK-owned",
                                      juce::dontSendNotification);
     else if (device != nullptr)
-        sampleRateHintLabel.setText ("Choose a rate, then Apply",
+        sampleRateHintLabel.setText ("Choose, then Apply",
                                      juce::dontSendNotification);
     else
-        sampleRateHintLabel.setText ("Default device rate",
+        sampleRateHintLabel.setText ("Default rate",
                                      juce::dontSendNotification);
 }
 
@@ -567,19 +654,19 @@ void AudioSettingsPanel::rebuildBufferSizeList()
         if (info.provider == "PipeWire")
         {
             bufferSizeBox.setEnabled (true);
-            bufferSizeHintLabel.setText ("PipeWire quantum - Apply changes the server period",
+            bufferSizeHintLabel.setText ("PipeWire quantum",
                                          juce::dontSendNotification);
         }
         else if (info.jackBufferToolAvailable)
         {
             bufferSizeBox.setEnabled (true);
-            bufferSizeHintLabel.setText ("JACK period - Apply uses jack_bufsize",
+            bufferSizeHintLabel.setText ("jack_bufsize",
                                          juce::dontSendNotification);
         }
         else
         {
             bufferSizeBox.setEnabled (false);
-            bufferSizeHintLabel.setText ("JACK server period - change it in JACK/PipeWire",
+            bufferSizeHintLabel.setText ("Server-owned",
                                          juce::dontSendNotification);
         }
     }
@@ -626,8 +713,8 @@ void AudioSettingsPanel::rebuildBufferSizeList()
         bufferSizeBox.setSelectedId (selectedId, juce::dontSendNotification);
         bufferSizeBox.setEnabled (device != nullptr);
         bufferSizeHintLabel.setText (device != nullptr
-                                       ? "Choose a size, then Apply"
-                                       : "Default device buffer",
+                                       ? "Choose, then Apply"
+                                       : "Default buffer",
                                      juce::dontSendNotification);
     }
 }
